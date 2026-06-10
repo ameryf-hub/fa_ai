@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>APEX BREAKOUT SCREENER</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080b10; --panel: #0d1117; --border: #1c2333; --border2: #242f45;
+    --accent: #00e5ff; --accent2: #ff6b35; --green: #00ff88; --red: #ff3860;
+    --yellow: #ffd600; --muted: #4a5568; --text: #c9d1d9; --text2: #8b949e;
+    --glow: 0 0 20px rgba(0,229,255,0.15);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'IBM Plex Mono',monospace; min-height:100vh; overflow-x:hidden; }
+  body::before { content:''; position:fixed; top:0;left:0;right:0;bottom:0; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,0.01) 2px,rgba(0,229,255,0.01) 4px); pointer-events:none; z-index:0; }
+  .wrapper { position:relative; z-index:1; max-width:1400px; margin:0 auto; padding:0 20px 40px; }
+
+  header { border-bottom:1px solid var(--border2); padding:24px 0 20px; display:flex; align-items:flex-end; justify-content:space-between; gap:20px; flex-wrap:wrap; }
+  .logo-block h1 { font-family:'Bebas Neue',sans-serif; font-size:clamp(28px,5vw,52px); letter-spacing:0.08em; color:var(--accent); text-shadow:0 0 30px rgba(0,229,255,0.4); line-height:1; }
+  .logo-block .tagline { font-size:10px; letter-spacing:0.3em; color:var(--text2); margin-top:4px; text-transform:uppercase; }
+  .header-stats { display:flex; gap:24px; flex-wrap:wrap; }
+  .hstat { text-align:right; }
+  .hstat .val { font-size:18px; font-weight:600; color:var(--green); }
+  .hstat .lbl { font-size:9px; letter-spacing:0.2em; color:var(--text2); text-transform:uppercase; }
+
+  .api-status-bar { background:rgba(0,229,255,0.04); border:1px solid var(--border2); border-left:3px solid var(--accent); padding:10px 16px; margin:16px 0 0; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+  .api-status-left { display:flex; align-items:center; gap:12px; }
+  .api-dot { width:8px; height:8px; border-radius:50%; background:var(--muted); flex-shrink:0; }
+  .api-dot.live { background:var(--green); box-shadow:0 0 8px rgba(0,255,136,0.6); animation:pulse-dot 2s infinite; }
+  .api-dot.error { background:var(--red); }
+  @keyframes pulse-dot { 0%,100%{opacity:1}50%{opacity:0.4} }
+  .api-status-text { font-size:10px; color:var(--text2); letter-spacing:0.1em; }
+  .api-status-text strong { color:var(--accent); }
+  .fmp-badge { font-size:8px; letter-spacing:0.2em; color:var(--accent); border:1px solid rgba(0,229,255,0.3); padding:2px 6px; text-transform:uppercase; }
+  .api-key-form { display:flex; align-items:center; gap:8px; }
+  .api-key-input { background:var(--panel); border:1px solid var(--border2); color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:10px; padding:5px 10px; width:240px; outline:none; }
+  .api-key-input:focus { border-color:var(--accent); }
+  .btn-sm { padding:5px 12px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.12em; text-transform:uppercase; cursor:pointer; border:1px solid var(--accent); background:transparent; color:var(--accent); transition:all 0.2s; }
+  .btn-sm:hover { background:rgba(0,229,255,0.08); }
+
+  .progress-bar-wrap { margin:10px 0 0; height:3px; background:var(--border2); display:none; }
+  .progress-bar-fill { height:3px; background:var(--accent); transition:width 0.3s ease; width:0%; }
+
+  .strategy-section { margin:28px 0 24px; background:var(--panel); border:1px solid var(--border2); border-left:3px solid var(--accent); padding:18px 22px; display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; }
+  .strategy-title { grid-column:1/-1; font-size:9px; letter-spacing:0.35em; color:var(--accent); text-transform:uppercase; margin-bottom:6px; }
+  .criteria-pill { display:flex; align-items:flex-start; gap:10px; cursor:pointer; padding:8px; border:1px solid transparent; border-radius:2px; transition:all 0.18s ease; position:relative; }
+  .criteria-pill:hover { border-color:var(--border2); background:rgba(0,229,255,0.04); box-shadow:0 0 12px rgba(0,229,255,0.08); }
+  .criteria-pill:hover .pill-label { color:#33eaff; }
+  .criteria-pill.customized { border-color:rgba(0,229,255,0.25); background:rgba(0,229,255,0.04); }
+  .criteria-pill.customized .pill-icon { border-color:var(--accent); }
+  .pill-custom-dot { position:absolute; top:6px; right:6px; width:6px; height:6px; border-radius:50%; background:var(--accent); box-shadow:0 0 6px rgba(0,229,255,0.8); display:none; }
+  .criteria-pill.customized .pill-custom-dot { display:block; }
+  .pill-icon { width:28px; height:28px; border:1px solid var(--border2); display:flex; align-items:center; justify-content:center; font-size:13px; flex-shrink:0; margin-top:1px; transition:border-color 0.18s; }
+  .pill-text .pill-label { font-size:10px; letter-spacing:0.15em; color:var(--accent); text-transform:uppercase; transition:color 0.18s; }
+  .pill-text .pill-desc { font-size:10px; color:var(--text2); font-family:'IBM Plex Sans',sans-serif; line-height:1.4; margin-top:2px; }
+  .pill-text .pill-range { font-size:9px; color:var(--accent); font-family:'IBM Plex Mono',monospace; margin-top:4px; opacity:0.8; display:none; }
+  .criteria-pill.customized .pill-range { display:block; }
+  .pill-click-hint { font-size:8px; letter-spacing:0.15em; color:var(--muted); text-transform:uppercase; margin-top:3px; }
+
+  /* ── CRITERIA MODAL ── */
+  #criteria-modal-overlay {
+    position:fixed; inset:0; z-index:8000;
+    background:rgba(8,11,16,0.85);
+    backdrop-filter:blur(4px);
+    display:none; align-items:center; justify-content:center;
+  }
+  #criteria-modal-overlay.open { display:flex; }
+  .criteria-modal {
+    background:var(--panel);
+    border:1px solid var(--border2);
+    border-top:2px solid var(--accent);
+    padding:28px 28px 24px;
+    width:100%; max-width:440px;
+    box-shadow:0 0 60px rgba(0,229,255,0.12);
+    position:relative;
+    animation:modal-in 0.18s ease;
+  }
+  @keyframes modal-in { from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)} }
+  .modal-close {
+    position:absolute; top:12px; right:14px;
+    background:none; border:none; color:var(--text2);
+    font-size:18px; cursor:pointer; line-height:1;
+    transition:color 0.15s;
+  }
+  .modal-close:hover { color:var(--accent); }
+  .modal-header { margin-bottom:20px; }
+  .modal-icon { font-size:22px; margin-bottom:8px; }
+  .modal-title { font-family:'Bebas Neue',sans-serif; font-size:22px; letter-spacing:0.08em; color:var(--accent); line-height:1; }
+  .modal-subtitle { font-size:9px; letter-spacing:0.25em; color:var(--text2); text-transform:uppercase; margin-top:3px; }
+  .modal-desc { font-size:11px; color:var(--text2); font-family:'IBM Plex Sans',sans-serif; line-height:1.6; margin-bottom:20px; padding:10px; border:1px solid var(--border); }
+  .modal-range-section { margin-bottom:22px; }
+  .modal-range-label { font-size:9px; letter-spacing:0.25em; color:var(--text2); text-transform:uppercase; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; }
+  .modal-range-label span { color:var(--accent); font-size:11px; font-family:'IBM Plex Mono',monospace; letter-spacing:0; }
+  .dual-range-wrap { position:relative; height:36px; margin-bottom:8px; }
+  .dual-range-track { position:absolute; top:50%; left:0; right:0; height:3px; background:var(--border2); transform:translateY(-50%); border-radius:2px; }
+  .dual-range-fill { position:absolute; top:50%; height:3px; background:var(--accent); transform:translateY(-50%); border-radius:2px; }
+  .dual-range-wrap input[type=range] {
+    position:absolute; top:50%; width:100%; transform:translateY(-50%);
+    -webkit-appearance:none; appearance:none;
+    background:transparent; pointer-events:none;
+    height:36px; margin:0;
+  }
+  .dual-range-wrap input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none; appearance:none;
+    width:16px; height:16px; border-radius:50%;
+    background:var(--accent); border:2px solid var(--bg);
+    box-shadow:0 0 8px rgba(0,229,255,0.5);
+    pointer-events:all; cursor:pointer;
+    transition:box-shadow 0.15s;
+  }
+  .dual-range-wrap input[type=range]::-webkit-slider-thumb:hover { box-shadow:0 0 14px rgba(0,229,255,0.8); }
+  .dual-range-wrap input[type=range]::-moz-range-thumb {
+    width:16px; height:16px; border-radius:50%;
+    background:var(--accent); border:2px solid var(--bg);
+    box-shadow:0 0 8px rgba(0,229,255,0.5);
+    pointer-events:all; cursor:pointer;
+  }
+  .range-inputs-row { display:flex; gap:10px; align-items:center; }
+  .range-input-group { display:flex; flex-direction:column; gap:4px; flex:1; }
+  .range-input-group label { font-size:8px; letter-spacing:0.2em; color:var(--text2); text-transform:uppercase; }
+  .range-input-group input[type=number] {
+    background:var(--bg); border:1px solid var(--border2);
+    color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:12px;
+    padding:7px 10px; outline:none; width:100%;
+    transition:border-color 0.15s;
+  }
+  .range-input-group input[type=number]:focus { border-color:var(--accent); }
+  .range-sep { color:var(--muted); font-size:14px; margin-top:16px; }
+  .modal-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:4px; }
+  .modal-btn { padding:9px 18px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.15em; text-transform:uppercase; cursor:pointer; border:1px solid var(--border2); background:transparent; color:var(--text2); transition:all 0.15s; }
+  .modal-btn:hover { border-color:var(--text2); color:var(--text); }
+  .modal-btn.primary { border-color:var(--accent); color:var(--accent); }
+  .modal-btn.primary:hover { background:rgba(0,229,255,0.1); box-shadow:0 0 16px rgba(0,229,255,0.2); }
+  .modal-btn.reset { border-color:var(--muted); color:var(--muted); }
+  .modal-btn.reset:hover { border-color:var(--red); color:var(--red); }
+
+  .controls { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px; align-items:center; }
+  .ctrl-group { display:flex; flex-direction:column; gap:4px; }
+  .ctrl-label { font-size:9px; letter-spacing:0.25em; color:var(--text2); text-transform:uppercase; }
+  select { background:var(--panel); border:1px solid var(--border2); color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:11px; padding:7px 10px; outline:none; cursor:pointer; appearance:none; -webkit-appearance:none; }
+  select:focus,select:hover { border-color:var(--accent); }
+  select option { background:var(--panel); }
+  .btn { padding:10px 20px; font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:0.15em; text-transform:uppercase; cursor:pointer; border:1px solid var(--accent); background:transparent; color:var(--accent); transition:all 0.2s; white-space:nowrap; }
+  .btn:hover { background:rgba(0,229,255,0.08); box-shadow:var(--glow); }
+  .btn.primary { background:var(--accent); color:var(--bg); font-weight:600; }
+  .btn.primary:hover { background:#33eaff; box-shadow:0 0 25px rgba(0,229,255,0.35); }
+  .btn:disabled { opacity:0.4; cursor:not-allowed; }
+
+  .ticker-bar { background:rgba(0,229,255,0.05); border:1px solid rgba(0,229,255,0.15); border-left:3px solid var(--green); padding:8px 14px; margin-bottom:20px; display:flex; align-items:center; gap:10px; overflow:hidden; }
+  .ticker-badge { font-size:8px; letter-spacing:0.3em; color:var(--green); border:1px solid var(--green); padding:2px 6px; flex-shrink:0; text-transform:uppercase; animation:pulse-border 2s ease-in-out infinite; }
+  @keyframes pulse-border { 0%,100%{opacity:1}50%{opacity:0.4} }
+  .ticker-scroll { font-size:10px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ticker-scroll span { color:var(--green); font-weight:600; }
+
+  .grid-header { display:grid; grid-template-columns:100px 75px 85px 85px 80px 90px 70px 90px 90px 100px 1fr; gap:2px; padding:10px 14px; border-bottom:1px solid var(--border2); font-size:8px; letter-spacing:0.25em; color:var(--muted); text-transform:uppercase; }
+  .stock-list { display:flex; flex-direction:column; gap:2px; }
+  .stock-row { display:grid; grid-template-columns:100px 75px 85px 85px 80px 90px 70px 90px 90px 100px 1fr; gap:2px; padding:12px 14px; background:var(--panel); border:1px solid var(--border); border-left:3px solid transparent; cursor:pointer; transition:all 0.15s ease; align-items:center; }
+  .stock-row:hover { border-color:var(--border2); background:#111820; }
+  .stock-row.alert-high { border-left-color:var(--green); background:linear-gradient(90deg,rgba(0,255,136,0.04) 0%,var(--panel) 30%); animation:row-flash 0.5s ease; }
+  .stock-row.alert-mid { border-left-color:var(--yellow); background:linear-gradient(90deg,rgba(255,214,0,0.03) 0%,var(--panel) 30%); }
+  .stock-row.alert-low { border-left-color:var(--accent2); background:linear-gradient(90deg,rgba(255,107,53,0.03) 0%,var(--panel) 30%); }
+  @keyframes row-flash { 0%{background:rgba(0,255,136,0.12)}100%{background:linear-gradient(90deg,rgba(0,255,136,0.04) 0%,var(--panel) 30%)} }
+
+  .col { font-size:11px; }
+  .col-ticker { font-weight:600; font-size:13px; color:var(--text); }
+  .col-ticker .exch { font-size:8px; color:var(--muted); display:block; letter-spacing:0.15em; margin-top:1px; }
+  .vol-cell { display:flex; flex-direction:column; gap:2px; }
+  .vol-ratio { font-size:11px; font-weight:600; }
+  .vol-ratio.spike { color:var(--green); }
+  .vol-ratio.elevated { color:var(--yellow); }
+  .vol-ratio.normal { color:var(--text2); }
+  .vol-bar-bg { height:3px; background:var(--border); overflow:hidden; }
+  .vol-bar-fill { height:3px; background:var(--green); transition:width 0.6s ease; }
+  .vol-bar-fill.yellow { background:var(--yellow); }
+  .vol-bar-fill.gray { background:var(--muted); }
+  .score-val { font-size:10px; color:var(--accent); font-weight:600; }
+  .score-bar-bg { height:4px; background:var(--border2); margin-top:4px; }
+  .score-bar-fill { height:4px; background:var(--accent); }
+  .signal-badge { display:inline-flex; align-items:center; gap:5px; padding:3px 8px; font-size:9px; letter-spacing:0.15em; text-transform:uppercase; font-weight:600; border:1px solid; }
+  .signal-badge.BREAKOUT { border-color:var(--green); color:var(--green); background:rgba(0,255,136,0.08); }
+  .signal-badge.WATCH { border-color:var(--yellow); color:var(--yellow); background:rgba(255,214,0,0.06); }
+  .signal-badge.BUILDING { border-color:var(--accent2); color:var(--accent2); background:rgba(255,107,53,0.06); }
+  .signal-badge.QUIET { border-color:var(--muted); color:var(--muted); }
+  .signal-dot { width:5px; height:5px; border-radius:50%; background:currentColor; animation:blink 1.2s ease-in-out infinite; }
+  .signal-badge.QUIET .signal-dot { animation:none; }
+  @keyframes blink { 0%,100%{opacity:1}50%{opacity:0.2} }
+  .mini-trend { display:flex; align-items:flex-end; gap:2px; height:28px; }
+  .mini-bar { width:4px; background:var(--border2); min-height:2px; }
+  .mini-bar.up { background:var(--green); }
+  .mini-bar.flat { background:var(--muted); }
+  .mini-bar.spike { background:var(--accent); }
+
+  .detail-panel { background:var(--panel); border:1px solid var(--border2); border-top:2px solid var(--accent); padding:22px; margin-top:12px; display:none; }
+  .detail-panel.open { display:block; }
+  .detail-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:16px; margin-bottom:18px; }
+  .detail-metric { border-left:2px solid var(--border2); padding-left:10px; }
+  .detail-metric .dm-label { font-size:8px; letter-spacing:0.3em; color:var(--text2); text-transform:uppercase; margin-bottom:4px; }
+  .detail-metric .dm-val { font-size:16px; font-weight:600; color:var(--text); }
+  .detail-metric .dm-sub { font-size:9px; color:var(--text2); margin-top:2px; font-family:'IBM Plex Sans',sans-serif; }
+  .vol-steps { display:flex; gap:0; align-items:stretch; margin-top:12px; }
+  .vol-step { flex:1; border:1px solid var(--border2); border-right:none; padding:12px; position:relative; }
+  .vol-step:last-child { border-right:1px solid var(--border2); }
+  .vol-step.active { border-color:var(--green); background:rgba(0,255,136,0.04); }
+  .vol-step.building { border-color:var(--yellow); background:rgba(255,214,0,0.03); }
+  .step-label { font-size:9px; letter-spacing:0.2em; color:var(--text2); text-transform:uppercase; }
+  .step-ratio { font-size:22px; font-family:'Bebas Neue',sans-serif; margin:4px 0 2px; }
+  .step-ratio.high { color:var(--green); } .step-ratio.med { color:var(--yellow); } .step-ratio.low { color:var(--text2); }
+  .step-desc { font-size:9px; color:var(--text2); font-family:'IBM Plex Sans',sans-serif; line-height:1.4; }
+  .step-arrow { position:absolute; right:-14px; top:50%; transform:translateY(-50%); color:var(--accent); font-size:12px; z-index:2; background:var(--bg); padding:2px; }
+
+  .msg-box { padding:24px; text-align:center; font-size:11px; color:var(--text2); border:1px solid var(--border); background:var(--panel); }
+  .msg-box.error { border-color:var(--red); color:var(--red); }
+  .loading-row { background:var(--panel); border:1px solid var(--border); padding:14px; animation:skeleton 1.5s ease-in-out infinite; }
+  @keyframes skeleton { 0%,100%{opacity:0.5}50%{opacity:1} }
+  .spin { display:inline-block; animation:spin 0.9s linear infinite; }
+  @keyframes spin { from{transform:rotate(0deg)}to{transform:rotate(360deg)} }
+
+  .method-section { margin-top:32px; border-top:1px solid var(--border); padding-top:24px; }
+  .method-title { font-family:'Bebas Neue',sans-serif; font-size:24px; letter-spacing:0.1em; color:var(--text2); margin-bottom:18px; }
+  .method-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:16px; }
+  .method-card { border:1px solid var(--border); padding:16px; background:var(--panel); }
+  .method-card h4 { font-size:9px; letter-spacing:0.3em; color:var(--accent); text-transform:uppercase; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+  .method-card h4::after { content:''; flex:1; height:1px; background:var(--border2); }
+  .method-card ul { list-style:none; display:flex; flex-direction:column; gap:6px; }
+  .method-card ul li { font-size:10px; color:var(--text2); font-family:'IBM Plex Sans',sans-serif; line-height:1.5; padding-left:12px; position:relative; }
+  .method-card ul li::before { content:'›'; position:absolute; left:0; color:var(--accent); }
+  .method-card ul li strong { color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:9px; }
+  .disclaimer { margin-top:28px; padding:12px; border:1px solid var(--border); font-size:9px; color:var(--muted); font-family:'IBM Plex Sans',sans-serif; line-height:1.6; }
+
+  @media(max-width:900px){.grid-header,.stock-row{grid-template-columns:85px 65px 75px 75px 75px 1fr;}.col:nth-child(6),.col:nth-child(7){display:none;}}
+  @media(max-width:600px){.grid-header,.stock-row{grid-template-columns:75px 60px 75px 1fr;}.col:nth-child(4),.col:nth-child(5){display:none;}}
+
+  /* ── CRITERIA THRESHOLD MODAL ── */
+  #criteria-modal {
+    display:none; position:fixed; inset:0; z-index:8000;
+    background:rgba(8,11,16,0.88); backdrop-filter:blur(4px);
+    align-items:center; justify-content:center;
+  }
+  #criteria-modal.open { display:flex; }
+  .criteria-modal-box {
+    background:var(--panel); border:1px solid var(--border2);
+    border-top:2px solid var(--accent);
+    padding:28px 30px 24px; width:100%; max-width:520px;
+    box-shadow:0 0 60px rgba(0,229,255,0.1);
+    max-height:90vh; overflow-y:auto;
+  }
+  .cm-header {
+    display:flex; align-items:center; justify-content:space-between;
+    margin-bottom:22px;
+  }
+  .cm-title {
+    font-size:9px; letter-spacing:0.35em; color:var(--accent);
+    text-transform:uppercase;
+  }
+  .cm-close {
+    background:none; border:none; color:var(--text2); font-size:18px;
+    cursor:pointer; line-height:1; padding:0 4px;
+  }
+  .cm-close:hover { color:var(--accent); }
+  .cm-row {
+    margin-bottom:20px; padding-bottom:20px;
+    border-bottom:1px solid var(--border);
+  }
+  .cm-row:last-of-type { border-bottom:none; margin-bottom:0; }
+  .cm-row-header {
+    display:flex; align-items:baseline; justify-content:space-between;
+    margin-bottom:10px;
+  }
+  .cm-row-label {
+    font-size:10px; letter-spacing:0.2em; color:var(--text);
+    text-transform:uppercase;
+  }
+  .cm-row-vals {
+    font-size:10px; color:var(--accent); font-weight:600;
+    letter-spacing:0.05em;
+  }
+  .cm-slider-wrap { display:flex; flex-direction:column; gap:8px; }
+  .cm-range-row { display:flex; align-items:center; gap:10px; }
+  .cm-range-lbl { font-size:9px; color:var(--text2); width:28px; text-align:right; flex-shrink:0; }
+  input[type=range].cm-slider {
+    flex:1; -webkit-appearance:none; appearance:none;
+    height:3px; background:var(--border2); outline:none; cursor:pointer;
+  }
+  input[type=range].cm-slider::-webkit-slider-thumb {
+    -webkit-appearance:none; width:14px; height:14px;
+    border-radius:50%; background:var(--accent);
+    box-shadow:0 0 6px rgba(0,229,255,0.5); cursor:pointer;
+  }
+  input[type=range].cm-slider::-moz-range-thumb {
+    width:14px; height:14px; border-radius:50%;
+    background:var(--accent); border:none; cursor:pointer;
+  }
+  .cm-number-row { display:flex; gap:10px; margin-top:6px; }
+  .cm-number-group { display:flex; flex-direction:column; gap:4px; flex:1; }
+  .cm-number-group label { font-size:8px; letter-spacing:0.2em; color:var(--text2); text-transform:uppercase; }
+  .cm-number-group input[type=number] {
+    background:var(--bg); border:1px solid var(--border2);
+    color:var(--text); font-family:'IBM Plex Mono',monospace;
+    font-size:11px; padding:5px 8px; outline:none; width:100%;
+  }
+  .cm-number-group input[type=number]:focus { border-color:var(--accent); }
+  .cm-active-badge {
+    display:inline-block; font-size:8px; letter-spacing:0.15em;
+    color:var(--green); border:1px solid var(--green);
+    padding:1px 5px; margin-left:8px; vertical-align:middle;
+    text-transform:uppercase;
+  }
+  .cm-footer {
+    display:flex; gap:10px; margin-top:22px; padding-top:18px;
+    border-top:1px solid var(--border);
+  }
+  .cm-footer .btn { flex:1; }
+  .btn-criteria-indicator {
+    position:relative;
+  }
+  .btn-criteria-indicator .active-dot {
+    position:absolute; top:-4px; right:-4px;
+    width:7px; height:7px; border-radius:50%;
+    background:var(--green); box-shadow:0 0 6px rgba(0,255,136,0.7);
+    display:none;
+  }
+  .btn-criteria-indicator.has-active .active-dot { display:block; }
+
+  /* ── LOGIN OVERLAY ── */
+  #login-overlay {
+    position:fixed; inset:0; z-index:9999;
+    background:var(--bg);
+    display:flex; align-items:center; justify-content:center;
+  }
+  #login-overlay::before {
+    content:''; position:absolute; inset:0;
+    background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,0.01) 2px,rgba(0,229,255,0.01) 4px);
+    pointer-events:none;
+  }
+  .login-box {
+    position:relative; z-index:1;
+    background:var(--panel);
+    border:1px solid var(--border2);
+    border-top:2px solid var(--accent);
+    padding:40px 36px 36px;
+    width:100%; max-width:380px;
+    box-shadow:0 0 60px rgba(0,229,255,0.08);
+  }
+  .login-logo { font-family:'Bebas Neue',sans-serif; font-size:34px; letter-spacing:0.08em; color:var(--accent); text-shadow:0 0 30px rgba(0,229,255,0.4); line-height:1; margin-bottom:4px; }
+  .login-sub { font-size:9px; letter-spacing:0.3em; color:var(--text2); text-transform:uppercase; margin-bottom:32px; }
+  .login-field { display:flex; flex-direction:column; gap:5px; margin-bottom:16px; }
+  .login-field label { font-size:9px; letter-spacing:0.25em; color:var(--text2); text-transform:uppercase; }
+  .login-field input {
+    background:var(--bg); border:1px solid var(--border2);
+    color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:12px;
+    padding:9px 12px; outline:none; width:100%;
+    transition:border-color 0.2s;
+  }
+  .login-field input:focus { border-color:var(--accent); }
+  .login-btn {
+    width:100%; margin-top:8px;
+    padding:11px; font-family:'IBM Plex Mono',monospace;
+    font-size:11px; letter-spacing:0.2em; text-transform:uppercase;
+    cursor:pointer; border:1px solid var(--accent);
+    background:var(--accent); color:var(--bg); font-weight:600;
+    transition:all 0.2s;
+  }
+  .login-btn:hover { background:#33eaff; box-shadow:0 0 25px rgba(0,229,255,0.35); }
+  .login-error {
+    font-size:10px; color:var(--red); letter-spacing:0.1em;
+    margin-top:12px; display:none; text-align:center;
+    border:1px solid rgba(255,56,96,0.3); padding:6px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ── LOGIN OVERLAY ── -->
+<div id="login-overlay">
+  <div class="login-box">
+    <div class="login-logo">APEX BREAKOUT</div>
+    <div class="login-sub">Institutional Volume Surge Screener</div>
+    <div class="login-field">
+      <label for="login-user">Username</label>
+      <input type="text" id="login-user" placeholder="username" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div class="login-field">
+      <label for="login-pass">Password</label>
+      <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="login-btn" onclick="doLogin()">ENTER SCREENER</button>
+    <div class="login-error" id="login-error">⚠ Invalid username or password.</div>
+  </div>
+</div>
+
+<div class="wrapper">
+
+  <header>
+    <div class="logo-block">
+      <h1>APEX BREAKOUT</h1>
+      <div class="tagline">Institutional Volume Surge Screener · NDX + SP500 + Russell 1000 · Powered by Financial Modeling Prep /stable/ API</div>
+    </div>
+    <div class="header-stats">
+      <div class="hstat"><div class="val" id="stat-alerts">—</div><div class="lbl">Breakouts</div></div>
+      <div class="hstat"><div class="val" id="stat-watch">—</div><div class="lbl">Watch</div></div>
+      <div class="hstat"><div class="val" id="stat-screened">—</div><div class="lbl">Loaded</div></div>
+      <div class="hstat"><div class="val" id="stat-time" style="font-size:11px;color:var(--accent)">—</div><div class="lbl">Last Update</div></div>
+    </div>
+  </header>
+
+  <!-- API STATUS -->
+  <div class="api-status-bar">
+    <div class="api-status-left">
+      <div class="api-dot" id="api-dot"></div>
+      <div class="api-status-text" id="api-status-text">Connecting to Apex backend — scanning NDX + SP500 + Russell 1000…</div>
+      <div class="fmp-badge">~1600 TICKERS</div>
+    </div>
+    <div class="api-key-form">
+      <span style="font-size:9px;color:var(--text2);letter-spacing:0.15em;text-transform:uppercase">SERVER</span>
+      <input type="text" class="api-key-input" id="api-key-input" placeholder="(served from Railway — no URL needed)" value="">
+      <button class="btn-sm" onclick="reconnect()">CONNECT</button>
+    </div>
+  </div>
+  <div class="progress-bar-wrap" id="progress-wrap">
+    <div class="progress-bar-fill" id="progress-fill"></div>
+  </div>
+
+  <!-- STRATEGY -->
+  <div class="strategy-section">
+    <div class="strategy-title">▸ Screening Strategy — 5 Criteria Overlay <span style="font-size:8px;color:var(--muted);letter-spacing:0.1em;font-weight:normal;margin-left:8px">CLICK ANY PILL TO ADJUST THRESHOLD</span></div>
+    <div class="criteria-pill" id="pill-revGrowth" onclick="openCriteriaModal()">
+      <div class="pill-custom-dot"></div>
+      <div class="pill-icon">📈</div>
+      <div class="pill-text">
+        <div class="pill-label">Track Record</div>
+        <div class="pill-desc">Revenue growth YoY from FMP financial-growth endpoint.</div>
+        <div class="pill-range" id="pill-range-revGrowth"></div>
+        <div class="pill-click-hint">↗ click to set range</div>
+      </div>
+    </div>
+    <div class="criteria-pill" id="pill-epsGrowth" onclick="openCriteriaModal()">
+      <div class="pill-custom-dot"></div>
+      <div class="pill-icon">🔭</div>
+      <div class="pill-text">
+        <div class="pill-label">Future Growth</div>
+        <div class="pill-desc">Forward estimates & EPS growth from FMP key-metrics.</div>
+        <div class="pill-range" id="pill-range-epsGrowth"></div>
+        <div class="pill-click-hint">↗ click to set range</div>
+      </div>
+    </div>
+    <div class="criteria-pill" id="pill-pct52H" onclick="openCriteriaModal()">
+      <div class="pill-custom-dot"></div>
+      <div class="pill-icon">😴</div>
+      <div class="pill-text">
+        <div class="pill-label">Sideways Base</div>
+        <div class="pill-desc">52W high/low range, beta compression via FMP quote & profile.</div>
+        <div class="pill-range" id="pill-range-pct52H"></div>
+        <div class="pill-click-hint">↗ click to set range</div>
+      </div>
+    </div>
+    <div class="criteria-pill" id="pill-volRatio" onclick="openCriteriaModal()">
+      <div class="pill-custom-dot"></div>
+      <div class="pill-icon">🏦</div>
+      <div class="pill-text">
+        <div class="pill-label">Inst. Volume Signal</div>
+        <div class="pill-desc">Volume ÷ avgVolume ratio — batch-quoted across full index universe via FMP stable.</div>
+        <div class="pill-range" id="pill-range-volRatio"></div>
+        <div class="pill-click-hint">↗ click to set range</div>
+      </div>
+    </div>
+    <div class="criteria-pill" id="pill-score" onclick="openCriteriaModal()">
+      <div class="pill-custom-dot"></div>
+      <div class="pill-icon">🚀</div>
+      <div class="pill-text">
+        <div class="pill-label">Breakout Score</div>
+        <div class="pill-desc">Composite 0–100: vol surge (40%) + fundamentals (35%) + base (25%).</div>
+        <div class="pill-range" id="pill-range-score"></div>
+        <div class="pill-click-hint">↗ click to set range</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTROLS -->
+  <div class="controls">
+    <div class="ctrl-group"><div class="ctrl-label">Index</div>
+      <select id="filter-index" onchange="applyFilters()">
+        <option value="ALL">All Indices</option><option value="SP500">S&P 500</option>
+        <option value="NDX">Nasdaq 100</option><option value="RUT">Russell 1000</option>
+      </select>
+    </div>
+    <div class="ctrl-group"><div class="ctrl-label">Signal</div>
+      <select id="filter-signal" onchange="applyFilters()">
+        <option value="ALL">All Signals</option><option value="BREAKOUT">Breakout</option>
+        <option value="WATCH">Watch</option><option value="BUILDING">Building</option>
+      </select>
+    </div>
+    <div class="ctrl-group"><div class="ctrl-label">Sector</div>
+      <select id="filter-sector" onchange="applyFilters()">
+        <option value="ALL">All Sectors</option><option value="Technology">Technology</option>
+        <option value="Healthcare">Healthcare</option><option value="Industrials">Industrials</option>
+        <option value="Consumer">Consumer</option><option value="Financials">Financials</option>
+        <option value="Energy">Energy</option>
+      </select>
+    </div>
+    <div class="ctrl-group"><div class="ctrl-label">Min Score</div>
+      <select id="filter-score" onchange="applyFilters()">
+        <option value="0">Any Score</option><option value="60">60+</option>
+        <option value="70">70+</option><option value="80">80+</option>
+      </select>
+    </div>
+    <div class="ctrl-group"><div class="ctrl-label">Sort By</div>
+      <select id="sort-by" onchange="applyFilters()">
+        <option value="score">Breakout Score</option><option value="volRatio">Vol Surge</option>
+        <option value="change">% Change</option><option value="revGrowth">Rev Growth</option>
+      </select>
+    </div>
+    <button class="btn primary" id="refresh-btn" onclick="loadAllData()">⟳ REFRESH SCREEN</button>
+    <button class="btn" onclick="exportCSV()">↓ EXPORT CSV</button>
+    <div class="btn-criteria-indicator" id="criteria-btn-wrap">
+      <button class="btn" onclick="openCriteriaModal()">⚙ CRITERIA</button>
+      <span class="active-dot"></span>
+    </div>
+  </div>
+
+
+  <div class="ticker-bar">
+    <div class="ticker-badge">⚡ FMP LIVE</div>
+    <div class="ticker-scroll" id="alert-ticker">Apex backend scanning ~1,600 symbols across NDX · SP500 · Russell 1000…</div>
+  </div>
+
+  <div class="grid-header">
+    <div>Ticker</div><div>Price</div><div>Chg %</div><div>Rev Growth</div>
+    <div>Vol Surge</div><div>52W High %</div><div>Beta</div>
+    <div>Score</div><div>P/E</div><div>Signal</div><div>Sector</div>
+  </div>
+  <div class="stock-list" id="stock-list">
+    <div class="msg-box">⟳ Loading from FMP /stable/ API…</div>
+  </div>
+
+  <div class="detail-panel" id="detail-panel"><div id="detail-content"></div></div>
+
+  <div class="method-section">
+    <div class="method-title">STRATEGY METHODOLOGY</div>
+    <div class="method-grid">
+      <div class="method-card"><h4>FMP /stable/ Endpoints Used</h4><ul>
+        <li><strong>/stable/sp500-constituent + /stable/nasdaq-constituent</strong> — live constituent lists fetched each refresh (~1,600 total tickers with Russell extras)</li><li><strong>/stable/quote?symbol=A,B,C,…</strong> — batch-quoted 200 at a time; all tickers in one pass</li>
+        <li><strong>/stable/profile</strong> — sector, beta, exchange, company description, website</li>
+        <li><strong>/stable/financial-growth</strong> — revenueGrowth YoY, EPS growth, gross profit growth</li>
+        <li><strong>/stable/key-metrics</strong> — P/E ratio, market cap, enterprise value cross-check</li>
+      </ul></div>
+      <div class="method-card"><h4>Volume Surge Detection</h4><ul>
+        <li><strong>Pre-filter:</strong> all ~1,600 tickers batch-quoted first. Only stocks with volRatio ≥ 1.3× proceed to detailed calls (profile + financial-growth), keeping API usage efficient.</li><li><strong>Surge Ratio:</strong> current volume ÷ avgVolume from FMP quote. Ratio ≥3× = institutional spike.</li>
+        <li><strong>BREAKOUT:</strong> Vol ≥3× AND at ≥85% of 52W high — price coiled, institutions moving.</li>
+        <li><strong>WATCH:</strong> Vol ≥2× or at ≥80% of 52W high with elevated volume.</li>
+        <li><strong>BUILDING:</strong> Vol ≥1.3× — early accumulation phase forming.</li>
+      </ul></div>
+      <div class="method-card"><h4>Breakout Score (0–100)</h4><ul>
+        <li><strong>Vol Component (40pts):</strong> Normalized surge ratio — 3× = 20pts, 6× = 40pts.</li>
+        <li><strong>Fundamental (35pts):</strong> Revenue growth rate + positive EPS trend.</li>
+        <li><strong>Base Quality (25pts):</strong> % of 52W high + beta compression bonus.</li>
+        <li><strong>Score ≥70 = BREAKOUT candidate.</strong> Score 50–69 = WATCH. Below 50 = BUILDING/QUIET.</li>
+      </ul></div>
+      <div class="method-card"><h4>Entry & Risk Protocol</h4><ul>
+        <li><strong>Entry:</strong> Break above 52W high with vol surge ≥3× confirmed same session.</li>
+        <li><strong>Stop Loss:</strong> 7% below entry — below base midpoint.</li>
+        <li><strong>Target:</strong> 18–28% measured move above breakout level.</li>
+        <li><strong>Position Size:</strong> Max 1–2% portfolio risk per name.</li>
+      </ul></div>
+    </div>
+  </div>
+
+  <div class="disclaimer">⚠ DISCLAIMER: Connects to Financial Modeling Prep /stable/ API for live data. For educational purposes only — not financial advice. All investing involves risk of loss.</div>
+</div>
+
+<!-- ── CRITERIA THRESHOLD MODAL ── -->
+<div id="criteria-modal" onclick="handleModalBackdrop(event)">
+  <div class="criteria-modal-box">
+    <div class="cm-header">
+      <div class="cm-title">▸ Criteria Thresholds — Customize Filters</div>
+      <button class="cm-close" onclick="closeCriteriaModal()">✕</button>
+    </div>
+
+    <!-- Revenue Growth -->
+    <div class="cm-row">
+      <div class="cm-row-header">
+        <div class="cm-row-label">Revenue Growth <span class="cm-active-badge" id="badge-revGrowth" style="display:none">ACTIVE</span></div>
+        <div class="cm-row-vals" id="vals-revGrowth">Min: 0% · Max: 200%</div>
+      </div>
+      <div class="cm-slider-wrap">
+        <div class="cm-range-row">
+          <span class="cm-range-lbl">Min</span>
+          <input type="range" class="cm-slider" id="sl-revGrowth-min" min="-50" max="200" step="1" value="0" oninput="syncCriteria('revGrowth')">
+        </div>
+        <div class="cm-range-row">
+          <span class="cm-range-lbl">Max</span>
+          <input type="range" class="cm-slider" id="sl-revGrowth-max" min="-50" max="500" step="1" value="200" oninput="syncCriteria('revGrowth')">
+        </div>
+      </div>
+      <div class="cm-number-row">
+        <div class="cm-number-group">
+          <label>Min %</label>
+          <input type="number" id="num-revGrowth-min" value="0" oninput="syncCriteriaFromNum('revGrowth')">
+        </div>
+        <div class="cm-number-group">
+          <label>Max %</label>
+          <input type="number" id="num-revGrowth-max" value="200" oninput="syncCriteriaFromNum('revGrowth')">
+        </div>
+      </div>
+    </div>
+
+    <!-- EPS Growth -->
+    <div class="cm-row">
+      <div class="cm-row-header">
+        <div class="cm-row-label">EPS Growth <span class="cm-active-badge" id="badge-epsGrowth" style="display:none">ACTIVE</span></div>
+        <div class="cm-row-vals" id="vals-epsGrowth">Min: 0% · Max: 200%</div>
+      </div>
+      <div class="cm-slider-wrap">
+        <div class="cm-range-row">
+          <span class="cm-range-lbl">Min</span>
+          <input type="range" class="cm-slider" id="sl-epsGrowth-min" min="-100" max="200" step="1" value="0" oninput="syncCriteria('epsGrowth')">
+        </div>
+        <div class="cm-range-row">
+          <span class="cm-range-lbl">Max</span>
+          <input type="range" class="cm-slider" id="sl-epsGrowth-max" min="-100" max="500" step="1" value="200" oninput="syncCriteria('epsGrowth')">
+        </div>
+      </div>
+      <div class="cm-number-row">
+        <div class="cm-number-group">
+          <label>Min %</label>
+          <input type="number" id="num-epsGrowth-min" value="0" oninput="syncCriteriaFromNum('epsGrowth')">
+        </div>
+        <div class="cm-number-group">
+          <label>Max %</label>
+          <input type="number" id="num-epsGrowth-max" value="200" oninput="syncCriteriaFromNum('epsGrowth')">
+        </div>
+      </div>
+    </div>
+
+    <!-- Vol Surge Ratio -->
+    <div class="cm-row">
+      <div class="cm-row-header">
+        <div class="cm-row-label">Vol Surge Ratio <span class="cm-active-badge" id="badge-volRatio" style="display:none">ACTIVE</span></div>
+        <div class="cm-row-vals" id="vals-volRatio">Min: 1.0× · Max: 20×</div>
+      </div>
+      <div class="cm-slider-wrap">
+        <div class="cm-range-row">
+          <span class="cm-range-lbl">Min</span>
+          <input type="range" class="cm-slider" id="sl-volRatio-min" min="0" max="10" step="0.1" value="1.0" oninput="syncCriteria('volRatio')">
+        </div>
+        <div class="cm-range-row">
+          <span class="cm-range-lbl">Max</span>
+          <input type="range" class="cm-slider" id="sl-volRatio-max" min="1" max="30" step="0.5" value="20" oninput="syncCriteria('volRatio')">
+        </div>
+      </div>
+      <div class="cm-number-row">
+        <div class="cm-number-group">
+          <label>Min ×</label>
+          <input type="number" id="num-volRatio-min" value="1.0" step="0.1" oninput="syncCriteriaFromNum('volRatio')">
+        </div>
+        <div class="cm-number-group">
+          <label>Max ×</label>
+          <input type="number" id="num-volRatio-max" value="20" step="0.5" oninput="syncCriteriaFromNum('volRatio')">
+        </div>
+      </div>
+    </div>
+
+    <!-- 52W High % -->
+    <div class="cm-row">
+      <div class="cm-row-header">
+        <div class="cm-row-label">52W High % <span class="cm-active-badge" id="badge-pct52H" style="display:none">ACTIVE</span></div>
+        <div class="cm-row-vals" id="vals-pct52H">Min: 0% · Max: 100%</div>
+      </div>
+      <div class="cm-slider-wrap">
+        <div class="cm-range-row">
+          <span class="cm-range-lbl">Min</span>
+          <input type="range" class="cm-slider" id="sl-pct52H-min" min="0" max="100" step="1" value="0" oninput="syncCriteria('pct52H')">
+        </div>
+        <div class="cm-range-row">
+          <span class="cm-range-lbl">Max</span>
+          <input type="range" class="cm-slider" id="sl-pct52H-max" min="0" max="100" step="1" value="100" oninput="syncCriteria('pct52H')">
+        </div>
+      </div>
+      <div class="cm-number-row">
+        <div class="cm-number-group">
+          <label>Min %</label>
+          <input type="number" id="num-pct52H-min" value="0" oninput="syncCriteriaFromNum('pct52H')">
+        </div>
+        <div class="cm-number-group">
+          <label>Max %</label>
+          <input type="number" id="num-pct52H-max" value="100" oninput="syncCriteriaFromNum('pct52H')">
+        </div>
+      </div>
+    </div>
+
+    <!-- Breakout Score -->
+    <div class="cm-row">
+      <div class="cm-row-header">
+        <div class="cm-row-label">Breakout Score <span class="cm-active-badge" id="badge-score" style="display:none">ACTIVE</span></div>
+        <div class="cm-row-vals" id="vals-score">Min: 0 · Max: 100</div>
+      </div>
+      <div class="cm-slider-wrap">
+        <div class="cm-range-row">
+          <span class="cm-range-lbl">Min</span>
+          <input type="range" class="cm-slider" id="sl-score-min" min="0" max="100" step="1" value="0" oninput="syncCriteria('score')">
+        </div>
+        <div class="cm-range-row">
+          <span class="cm-range-lbl">Max</span>
+          <input type="range" class="cm-slider" id="sl-score-max" min="0" max="100" step="1" value="100" oninput="syncCriteria('score')">
+        </div>
+      </div>
+      <div class="cm-number-row">
+        <div class="cm-number-group">
+          <label>Min</label>
+          <input type="number" id="num-score-min" value="0" oninput="syncCriteriaFromNum('score')">
+        </div>
+        <div class="cm-number-group">
+          <label>Max</label>
+          <input type="number" id="num-score-max" value="100" oninput="syncCriteriaFromNum('score')">
+        </div>
+      </div>
+    </div>
+
+    <div class="cm-footer">
+      <button class="btn" onclick="resetCriteriaDefaults()">↺ RESET</button>
+      <button class="btn primary" onclick="applyCriteriaAndClose()">✓ APPLY FILTER</button>
+    </div>
+  </div>
+</div>
+
+
+<script>
+// ── LOGIN ──
+// To change credentials, edit the values below.
+const USERS = {
+  'admin': 'apex2025'
+};
+
+function doLogin() {
+  const u = document.getElementById('login-user').value.trim();
+  const p = document.getElementById('login-pass').value;
+  const err = document.getElementById('login-error');
+  if (USERS[u] && USERS[u] === p) {
+    document.getElementById('login-overlay').style.display = 'none';
+    loadAllData();
+  } else {
+    err.style.display = 'block';
+    document.getElementById('login-pass').value = '';
+    document.getElementById('login-pass').focus();
+  }
+}
+
+// Focus username on load
+window.addEventListener('load', () => {
+  document.getElementById('login-user').focus();
+  updateCriteriaButtonIndicator();
+});
+
+
+// ── APP ──
+// ── Backend endpoint (update if you host the server elsewhere) ───────────────
+// Backend URL — reads from the input so users can point to a remote server
+function getBackendURL() {
+  const input = document.getElementById('api-key-input');
+  return (input ? input.value.trim() : '') || '';
+}
+
+let STOCKS = [];
+let openTicker = null;
+
+// ── CRITERIA THRESHOLDS ──
+// Default ranges — a filter is only "active" when the user deviates from these.
+const CRITERIA_DEFAULTS = {
+  revGrowth: { min: 0,   max: 200  },
+  epsGrowth: { min: 0,   max: 200  },
+  volRatio:  { min: 1.0, max: 20   },
+  pct52H:    { min: 0,   max: 100  },
+  score:     { min: 0,   max: 100  },
+};
+
+// Live thresholds — loaded from localStorage on boot, mutated by the modal.
+let criteriaThresholds = loadCriteriaFromStorage();
+
+function loadCriteriaFromStorage() {
+  try {
+    const saved = localStorage.getItem('apex_criteria_thresholds');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      // Merge with defaults so new keys are always present
+      const merged = {};
+      for (const key of Object.keys(CRITERIA_DEFAULTS)) {
+        merged[key] = { ...CRITERIA_DEFAULTS[key], ...(parsed[key] || {}) };
+      }
+      return merged;
+    }
+  } catch(e) {}
+  return JSON.parse(JSON.stringify(CRITERIA_DEFAULTS)); // deep clone
+}
+
+function saveCriteriaToStorage() {
+  try { localStorage.setItem('apex_criteria_thresholds', JSON.stringify(criteriaThresholds)); } catch(e) {}
+}
+
+// Returns true if a given criteria key has been customised away from its default.
+function isCriteriaActive(key) {
+  const d = CRITERIA_DEFAULTS[key];
+  const t = criteriaThresholds[key];
+  return t.min !== d.min || t.max !== d.max;
+}
+
+// Returns true if ANY criteria is active (used for the button indicator dot).
+function hasAnyCriteriaActive() {
+  return Object.keys(CRITERIA_DEFAULTS).some(isCriteriaActive);
+}
+
+// ── Modal open / close ──
+function openCriteriaModal() {
+  // Populate inputs from current thresholds
+  for (const key of Object.keys(CRITERIA_DEFAULTS)) {
+    const t = criteriaThresholds[key];
+    document.getElementById(`sl-${key}-min`).value  = t.min;
+    document.getElementById(`sl-${key}-max`).value  = t.max;
+    document.getElementById(`num-${key}-min`).value = t.min;
+    document.getElementById(`num-${key}-max`).value = t.max;
+    updateCriteriaDisplay(key);
+  }
+  document.getElementById('criteria-modal').classList.add('open');
+}
+
+function closeCriteriaModal() {
+  document.getElementById('criteria-modal').classList.remove('open');
+}
+
+function handleModalBackdrop(e) {
+  if (e.target === document.getElementById('criteria-modal')) closeCriteriaModal();
+}
+
+// Called by slider oninput — syncs number inputs and display label.
+function syncCriteria(key) {
+  const minVal = parseFloat(document.getElementById(`sl-${key}-min`).value);
+  const maxVal = parseFloat(document.getElementById(`sl-${key}-max`).value);
+  document.getElementById(`num-${key}-min`).value = minVal;
+  document.getElementById(`num-${key}-max`).value = maxVal;
+  updateCriteriaDisplay(key);
+}
+
+// Called by number input oninput — syncs sliders and display label.
+function syncCriteriaFromNum(key) {
+  const minVal = parseFloat(document.getElementById(`num-${key}-min`).value) || 0;
+  const maxVal = parseFloat(document.getElementById(`num-${key}-max`).value) || 0;
+  document.getElementById(`sl-${key}-min`).value = minVal;
+  document.getElementById(`sl-${key}-max`).value = maxVal;
+  updateCriteriaDisplay(key);
+}
+
+// Updates the live value label and ACTIVE badge inside the modal row.
+function updateCriteriaDisplay(key) {
+  const minVal = parseFloat(document.getElementById(`num-${key}-min`).value);
+  const maxVal = parseFloat(document.getElementById(`num-${key}-max`).value);
+  const d = CRITERIA_DEFAULTS[key];
+  const isActive = minVal !== d.min || maxVal !== d.max;
+  const suffix = (key === 'volRatio') ? '×' : (key === 'score') ? '' : '%';
+  document.getElementById(`vals-${key}`).textContent = `Min: ${minVal}${suffix} · Max: ${maxVal}${suffix}`;
+  const badge = document.getElementById(`badge-${key}`);
+  badge.style.display = isActive ? 'inline-block' : 'none';
+}
+
+// Reads modal inputs → writes to criteriaThresholds → saves → closes → filters.
+function applyCriteriaAndClose() {
+  for (const key of Object.keys(CRITERIA_DEFAULTS)) {
+    criteriaThresholds[key] = {
+      min: parseFloat(document.getElementById(`num-${key}-min`).value),
+      max: parseFloat(document.getElementById(`num-${key}-max`).value),
+    };
+  }
+  saveCriteriaToStorage();
+  updateCriteriaButtonIndicator();
+  closeCriteriaModal();
+  applyFilters();
+}
+
+// Resets all thresholds to defaults, saves, and re-renders.
+function resetCriteriaDefaults() {
+  criteriaThresholds = JSON.parse(JSON.stringify(CRITERIA_DEFAULTS));
+  saveCriteriaToStorage();
+  // Refresh modal inputs
+  for (const key of Object.keys(CRITERIA_DEFAULTS)) {
+    const d = CRITERIA_DEFAULTS[key];
+    document.getElementById(`sl-${key}-min`).value  = d.min;
+    document.getElementById(`sl-${key}-max`).value  = d.max;
+    document.getElementById(`num-${key}-min`).value = d.min;
+    document.getElementById(`num-${key}-max`).value = d.max;
+    updateCriteriaDisplay(key);
+  }
+  updateCriteriaButtonIndicator();
+}
+
+// Shows/hides the green dot on the ⚙ CRITERIA button.
+function updateCriteriaButtonIndicator() {
+  const wrap = document.getElementById('criteria-btn-wrap');
+  if (hasAnyCriteriaActive()) {
+    wrap.classList.add('has-active');
+  } else {
+    wrap.classList.remove('has-active');
+  }
+}
+
+
+function setStatus(state, msg) {
+  const dot = document.getElementById('api-dot');
+  const txt = document.getElementById('api-status-text');
+  dot.className = 'api-dot' + (state==='live'?' live':state==='error'?' error':'');
+  txt.innerHTML = msg;
+}
+
+function setProgress(pct) {
+  const wrap = document.getElementById('progress-wrap');
+  const fill = document.getElementById('progress-fill');
+  wrap.style.display = pct >= 100 ? 'none' : 'block';
+  fill.style.width = pct + '%';
+}
+
+// Animate the progress bar while the backend is working (indeterminate)
+let _progressTimer = null;
+function startProgressPulse() {
+  let p = 5;
+  setProgress(p);
+  _progressTimer = setInterval(() => {
+    // Slow crawl that never quite reaches 100 until we cancel it
+    p = p < 85 ? p + (Math.random() * 3) : p + 0.2;
+    setProgress(Math.min(p, 92));
+  }, 800);
+}
+function stopProgressPulse() {
+  if (_progressTimer) { clearInterval(_progressTimer); _progressTimer = null; }
+  setProgress(100);
+}
+
+async function loadAllData() {
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin">⟳</span> SCANNING…';
+  setStatus('connecting', `Scanning <strong>NDX + SP500 + Russell 1000</strong> via <strong>${getBackendURL()}</strong>…`);
+  startProgressPulse();
+
+  document.getElementById('stock-list').innerHTML =
+    Array(6).fill('<div class="loading-row" style="height:52px;margin-bottom:2px"></div>').join('');
+
+  try {
+    const res = await fetch(`${getBackendURL()}/api/screener-refresh`);
+    if (!res.ok) throw new Error(`Server returned HTTP ${res.status}`);
+    const payload = await res.json();
+
+    if (payload.error) throw new Error(payload.error);
+    STOCKS = Array.isArray(payload.stocks) ? payload.stocks : [];
+    if (STOCKS.length === 0) throw new Error('No qualifying stocks returned from backend.');
+
+    stopProgressPulse();
+    const t = payload.lastUpdated || new Date().toLocaleTimeString();
+    const total = payload.total || '~1 600';
+    setStatus('live', `<strong>${STOCKS.length} qualifying stocks</strong> found across ${total}-stock universe (NDX + SP500 + RUT) · Updated ${t}`);
+    document.getElementById('stat-time').textContent = t;
+    applyFilters();
+
+  } catch(err) {
+    stopProgressPulse();
+    setStatus('error', `⚠ Backend error: <strong>${err.message}</strong> — ensure the Railway deployment is live and the URL is correct`);
+    document.getElementById('stock-list').innerHTML =
+      `<div class="msg-box error">⚠ ${err.message}<br><span style="font-size:9px;color:var(--muted)">Check that your Railway deployment is running, then click REFRESH SCREEN.</span></div>`;
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = '⟳ REFRESH SCREEN';
+}
+
+function getSignal(s) {
+  if (s.volRatio >= 3.0 && s.pct52H >= 85) return 'BREAKOUT';
+  if (s.volRatio >= 2.0 || (s.volRatio >= 1.5 && s.pct52H >= 80)) return 'WATCH';
+  if (s.volRatio >= 1.3) return 'BUILDING';
+  return 'QUIET';
+}
+
+function fmtCap(v) {
+  if (!v) return '—';
+  if (v >= 1e12) return '$'+(v/1e12).toFixed(1)+'T';
+  if (v >= 1e9)  return '$'+(v/1e9).toFixed(1)+'B';
+  return '$'+(v/1e6).toFixed(0)+'M';
+}
+function fmtVol(v) {
+  if (!v) return '—';
+  if (v >= 1e6) return (v/1e6).toFixed(1)+'M';
+  if (v >= 1e3) return (v/1e3).toFixed(0)+'K';
+  return String(v);
+}
+
+function sparkBars(s) {
+  const seed = s.ticker.charCodeAt(0) + (s.ticker.charCodeAt(1)||0);
+  return Array.from({length:12},(_,i) => {
+    const h = 6 + Math.abs(Math.sin(seed+i*1.7)*16 + Math.cos(i*0.9+seed*0.1)*6);
+    const cls = i<8?'flat':(i===11&&s.volRatio>2?'spike':'up');
+    return `<div class="mini-bar ${cls}" style="height:${Math.round(h)}px"></div>`;
+  }).join('');
+}
+
+function renderRow(s) {
+  const sig = getSignal(s);
+  const ac = sig==='BREAKOUT'?'alert-high':sig==='WATCH'?'alert-mid':sig==='BUILDING'?'alert-low':'';
+  const chgCol = s.change>=0?'var(--green)':'var(--red)';
+  const chgStr = (s.change>=0?'+':'')+s.change.toFixed(2)+'%';
+  const vrCls = s.volRatio>=3?'spike':s.volRatio>=2?'elevated':'normal';
+  const vrBar = s.volRatio>=3?'':s.volRatio>=2?'yellow':'gray';
+  const revCol = s.revGrowth==null?'var(--text2)':s.revGrowth>0?'var(--accent)':'var(--red)';
+  const h52Col = s.pct52H>=90?'var(--green)':s.pct52H>=75?'var(--yellow)':'var(--text2)';
+  return `
+  <div class="stock-row ${ac}" onclick="toggleDetail('${s.ticker}')">
+    <div class="col col-ticker">${s.ticker}<span class="exch">${s.exchange} · ${s.index}</span></div>
+    <div class="col">$${s.price.toFixed(2)}</div>
+    <div class="col" style="color:${chgCol};font-weight:600">${chgStr}</div>
+    <div class="col" style="color:${revCol}">${s.revGrowth!=null?(s.revGrowth>0?'+':'')+s.revGrowth+'%':'—'}</div>
+    <div class="col">
+      <div class="vol-cell">
+        <div class="vol-ratio ${vrCls}">${s.volRatio.toFixed(1)}×</div>
+        <div class="vol-bar-bg"><div class="vol-bar-fill ${vrBar}" style="width:${Math.min(100,s.volRatio/6*100)}%"></div></div>
+      </div>
+    </div>
+    <div class="col" style="color:${h52Col};font-size:10px">${s.pct52H}%<br><span style="color:var(--muted);font-size:8px">of $${s.yearHigh?.toFixed(0)||'—'}</span></div>
+    <div class="col" style="font-size:10px;color:var(--text2)">${s.beta!=null?s.beta+'β':'—'}</div>
+    <div class="col">
+      <div class="score-val">${s.score}</div>
+      <div class="score-bar-bg"><div class="score-bar-fill" style="width:${s.score}%"></div></div>
+    </div>
+    <div class="col" style="font-size:10px;color:var(--text2)">${s.pe!=null?s.pe:'—'}</div>
+    <div class="col"><div class="signal-badge ${sig}"><div class="signal-dot"></div>${sig}</div></div>
+    <div class="col" style="font-size:10px;color:var(--text2)">
+      <div style="display:flex;align-items:center;gap:6px">
+        <div class="mini-trend">${sparkBars(s)}</div>${s.sector}
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderDetail(s) {
+  const sig = getSignal(s);
+  const vStepCls = s.volRatio>=3?'active':s.volRatio>=2?'building':'';
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div>
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:30px;color:var(--accent);letter-spacing:0.05em">${s.ticker}</span>
+        <span style="font-size:11px;color:var(--text2);margin-left:10px">${s.companyName} · ${s.sector}</span>
+      </div>
+      <div class="signal-badge ${sig}" style="font-size:11px;padding:6px 14px">
+        <div class="signal-dot"></div>${sig} — SCORE ${s.score}/100
+      </div>
+    </div>
+    <div class="detail-grid">
+      <div class="detail-metric"><div class="dm-label">Price</div><div class="dm-val">$${s.price.toFixed(2)}</div><div class="dm-sub">${s.change>=0?'+':''}${s.change.toFixed(2)}% today</div></div>
+      <div class="detail-metric"><div class="dm-label">Market Cap</div><div class="dm-val">${fmtCap(s.mktCap)}</div><div class="dm-sub">FMP /stable/profile</div></div>
+      <div class="detail-metric"><div class="dm-label">Revenue Growth</div><div class="dm-val" style="color:${s.revGrowth>0?'var(--green)':'var(--red)'}">${s.revGrowth!=null?(s.revGrowth>0?'+':'')+s.revGrowth+'%':'—'}</div><div class="dm-sub">YoY · FMP financial-growth</div></div>
+      <div class="detail-metric"><div class="dm-label">EPS Growth</div><div class="dm-val" style="color:${(s.epsGrowth||0)>0?'var(--green)':'var(--red)'}">${s.epsGrowth!=null?(s.epsGrowth>0?'+':'')+s.epsGrowth+'%':'—'}</div><div class="dm-sub">YoY EPS trend</div></div>
+      <div class="detail-metric"><div class="dm-label">52W Range</div><div class="dm-val">${s.pct52H}%</div><div class="dm-sub">$${s.yearLow?.toFixed(2)||'—'} → $${s.yearHigh?.toFixed(2)||'—'}</div></div>
+      <div class="detail-metric"><div class="dm-label">Beta / P/E</div><div class="dm-val">${s.beta!=null?s.beta:'—'}</div><div class="dm-sub">P/E: ${s.pe!=null?s.pe:'—'}</div></div>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:9px;letter-spacing:0.3em;color:var(--accent);text-transform:uppercase;margin-bottom:8px">▸ Volume Surge Analysis</div>
+      <div class="vol-steps">
+        <div class="vol-step ${vStepCls}" style="position:relative">
+          <div class="step-label">Current Volume</div>
+          <div class="step-ratio ${s.volRatio>=3?'high':s.volRatio>=2?'med':'low'}">${fmtVol(s.volume)}</div>
+          <div class="step-desc">Live from FMP /stable/quote</div>
+          <div class="step-arrow">›</div>
+        </div>
+        <div class="vol-step" style="position:relative">
+          <div class="step-label">Average Volume</div>
+          <div class="step-ratio low">${fmtVol(s.avgVolume)}</div>
+          <div class="step-desc">20-day avg from FMP</div>
+          <div class="step-arrow">›</div>
+        </div>
+        <div class="vol-step ${vStepCls}">
+          <div class="step-label">Surge Ratio</div>
+          <div class="step-ratio ${s.volRatio>=3?'high':s.volRatio>=2?'med':'low'}">${s.volRatio.toFixed(2)}×</div>
+          <div class="step-desc">${s.volRatio>=3?'✓ INSTITUTIONAL SPIKE':s.volRatio>=2?'⟳ ELEVATED':'— Normal'}</div>
+        </div>
+      </div>
+    </div>
+    ${s.description?`<div style="margin-bottom:12px;font-size:10px;color:var(--text2);font-family:'IBM Plex Sans',sans-serif;line-height:1.6;padding:10px;border:1px solid var(--border)">
+      <span style="color:var(--accent);font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:0.2em">▸ COMPANY</span><br>
+      ${s.description.substring(0,320)}${s.description.length>320?'…':''}
+      ${s.website?`<a href="${s.website}" target="_blank" rel="noopener" style="color:var(--accent);margin-left:8px;font-size:9px">[website ↗]</a>`:''}
+    </div>`:''}
+    <div style="font-size:10px;color:var(--text2);font-family:'IBM Plex Sans',sans-serif;line-height:1.7;padding:10px;border:1px solid var(--border)">
+      <span style="color:var(--accent);font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:0.2em">▸ TRADE PLAN</span><br>
+      <strong style="color:var(--text)">Entry:</strong> Break above $${s.yearHigh?.toFixed(2)||'52W high'} with vol surge ≥3× confirmed.&nbsp;&nbsp;
+      <strong style="color:var(--text)">Stop:</strong> $${(s.price*0.93).toFixed(2)} (~7% below).&nbsp;&nbsp;
+      <strong style="color:var(--text)">Target:</strong> $${(s.price*1.18).toFixed(2)}–$${(s.price*1.28).toFixed(2)} (18–28% move).&nbsp;&nbsp;
+      <strong style="color:var(--text)">Risk:</strong> Max 1–2% of portfolio.
+    </div>`;
+}
+
+function toggleDetail(ticker) {
+  const panel = document.getElementById('detail-panel');
+  const content = document.getElementById('detail-content');
+  const s = STOCKS.find(x => x.ticker === ticker);
+  if (!s) return;
+  if (openTicker === ticker) { panel.classList.remove('open'); openTicker = null; }
+  else {
+    content.innerHTML = renderDetail(s);
+    panel.classList.add('open');
+    openTicker = ticker;
+    setTimeout(() => panel.scrollIntoView({behavior:'smooth',block:'nearest'}), 50);
+  }
+}
+
+function applyFilters() {
+  const idx   = document.getElementById('filter-index').value;
+  const sig   = document.getElementById('filter-signal').value;
+  const sec   = document.getElementById('filter-sector').value;
+  const minSc = parseInt(document.getElementById('filter-score').value);
+  const sort  = document.getElementById('sort-by').value;
+
+  const criteriaFilters = Object.keys(CRITERIA_DEFAULTS)
+    .filter(key => isCriteriaActive(key))
+    .map(key => ({ key, min: criteriaThresholds[key].min, max: criteriaThresholds[key].max }));
+
+  let data = STOCKS.filter(s => {
+    const signal = getSignal(s);
+    const secMatch = sec==='ALL' || (s.sector||'').toLowerCase().includes(sec.toLowerCase());
+
+    // Standard dropdown filters
+    if (!(idx==='ALL' || s.index===idx)) return false;
+    if (!(sig==='ALL' || signal===sig))  return false;
+    if (!secMatch)                        return false;
+    if (s.score < minSc)                  return false;
+
+    // Criteria threshold filters — only applied when the user has customised them.
+    for (const f of criteriaFilters) {
+      const val = s[f.key];
+      // If the value is null/undefined and the user set a minimum above 0,
+      // exclude the stock — unknown data doesn't satisfy a positive threshold.
+      if (val == null) {
+        if (f.min > 0) return false;
+        // If min is 0 (or negative), pass through — don't penalise missing data.
+        continue;
+      }
+      // Strict range check: stock must fall within [min, max].
+      if (val < f.min || val > f.max) return false;
+    }
+
+    return true;
+  });
+
+  data.sort((a,b) => {
+    if (sort==='score')     return b.score - a.score;
+    if (sort==='volRatio')  return b.volRatio - a.volRatio;
+    if (sort==='change')    return b.change - a.change;
+    if (sort==='revGrowth') return (b.revGrowth||0) - (a.revGrowth||0);
+    return 0;
+  });
+
+  document.getElementById('stock-list').innerHTML =
+    data.length ? data.map(renderRow).join('') : '<div class="msg-box">No stocks match the current filters.</div>';
+
+  const alerts = data.filter(s=>getSignal(s)==='BREAKOUT').length;
+  const watch  = data.filter(s=>getSignal(s)==='WATCH').length;
+  document.getElementById('stat-alerts').textContent = alerts;
+  document.getElementById('stat-watch').textContent  = watch;
+  document.getElementById('stat-screened').textContent = STOCKS.length;
+
+  const bo = data.filter(s=>getSignal(s)==='BREAKOUT').sort((a,b)=>b.score-a.score);
+  document.getElementById('alert-ticker').innerHTML = bo.length
+    ? bo.map(s=>`<span>${s.ticker}</span> surge ${s.volRatio}× · ${s.pct52H}% of 52W high · Score <span>${s.score}</span>`).join(' &nbsp;·&nbsp; ')
+    : `Monitoring ${STOCKS.length} symbols via FMP /stable/ — no cascade breakouts currently active.`;
+}
+
+
+function exportCSV() {
+  if (!STOCKS.length) { alert('No data loaded. Click REFRESH SCREEN first.'); return; }
+  const hdr = 'Ticker,Company,Sector,Exchange,Index,Price,Change%,MarketCap,RevGrowth%,EpsGrowth%,VolRatio,Volume,AvgVolume,52WHigh%,YearHigh,YearLow,Beta,PE,Score,Signal';
+  const rows = STOCKS.map(s=>[
+    s.ticker,`"${s.companyName}"`,s.sector,s.exchange,s.index,
+    s.price,s.change.toFixed(2),s.mktCap,
+    s.revGrowth??'',s.epsGrowth??'',
+    s.volRatio,s.volume,s.avgVolume,s.pct52H,s.yearHigh,s.yearLow,
+    s.beta??'',s.pe??'',s.score,getSignal(s)
+  ].join(','));
+  const blob = new Blob([[hdr,...rows].join('\n')],{type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `apex-breakout-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+function reconnect() {
+  loadAllData();
+}
+
+// Auto-refresh every 60 seconds once data is loaded
+setInterval(() => { if (STOCKS.length > 0) loadAllData(); }, 60000);
+
+// NOTE: loadAllData() is now called after successful login, not on boot.
+
+</script>
+</body>
+</html>
