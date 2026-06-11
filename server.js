@@ -482,7 +482,7 @@ app.use((err, req, res, next) => {
 module.exports = app;
 
 // Only start server if this file is run directly
-if (require.main === module) {
+if (require.git config pull.ff onlygit config pull.ff onlymain === module) {
     const PORT = process.env.PORT || 3000;
     
     // Load Russell extra tickers before starting server
