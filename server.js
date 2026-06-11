@@ -22,10 +22,14 @@ async function loadRussellExtra() {
         const filePath = path.join(__dirname, 'russell-extra.json');
         const data = await fs.readFile(filePath, 'utf-8');
         const config = JSON.parse(data);
-        RUSSELL_EXTRA = config.tickers || [];
+        RUSSELL_EXTRA = Array.isArray(config.tickers) ? config.tickers : [];
         console.log(`✓ Loaded ${RUSSELL_EXTRA.length} Russell extra tickers`);
     } catch (error) {
-        console.warn('⚠ Failed to load russell-extra.json:', error.message);
+        if (error.code === 'ENOENT') {
+            console.log('ℹ russell-extra.json not found; continuing without extra tickers.');
+        } else {
+            console.warn('⚠ Failed to load russell-extra.json:', error.message);
+        }
         RUSSELL_EXTRA = [];
     }
 }

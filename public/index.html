@@ -751,6 +751,7 @@ function doLogin() {
 window.addEventListener('load', () => {
   document.getElementById('login-user').focus();
   updateCriteriaButtonIndicator();
+  updateCriteriaPills();
 });
 
 
@@ -759,7 +760,7 @@ window.addEventListener('load', () => {
 // Backend URL — reads from the input so users can point to a remote server
 function getBackendURL() {
   const input = document.getElementById('api-key-input');
-  return (input ? input.value.trim() : '') || '';
+  return (input ? input.value.trim() : '') || window.location.origin;
 }
 
 let STOCKS = [];
@@ -862,16 +863,38 @@ function updateCriteriaDisplay(key) {
   badge.style.display = isActive ? 'inline-block' : 'none';
 }
 
+function formatCriteriaRangeLabel(key, min, max) {
+  const suffix = (key === 'volRatio') ? '×' : (key === 'score') ? '' : '%';
+  if (min === CRITERIA_DEFAULTS[key].min && max === CRITERIA_DEFAULTS[key].max) {
+    return 'Default';
+  }
+  return `${min}${suffix} → ${max}${suffix}`;
+}
+
+function updateCriteriaPills() {
+  for (const key of Object.keys(CRITERIA_DEFAULTS)) {
+    const t = criteriaThresholds[key];
+    const pill = document.getElementById(`pill-${key}`);
+    const range = document.getElementById(`pill-range-${key}`);
+    const active = isCriteriaActive(key);
+    if (pill) pill.classList.toggle('customized', active);
+    if (range) range.textContent = formatCriteriaRangeLabel(key, t.min, t.max);
+  }
+  updateCriteriaButtonIndicator();
+}
+
 // Reads modal inputs → writes to criteriaThresholds → saves → closes → filters.
 function applyCriteriaAndClose() {
   for (const key of Object.keys(CRITERIA_DEFAULTS)) {
-    criteriaThresholds[key] = {
-      min: parseFloat(document.getElementById(`num-${key}-min`).value),
-      max: parseFloat(document.getElementById(`num-${key}-max`).value),
-    };
+    let min = parseFloat(document.getElementById(`num-${key}-min`).value);
+    let max = parseFloat(document.getElementById(`num-${key}-max`).value);
+    if (!Number.isFinite(min)) min = CRITERIA_DEFAULTS[key].min;
+    if (!Number.isFinite(max)) max = CRITERIA_DEFAULTS[key].max;
+    if (min > max) [min, max] = [max, min];
+    criteriaThresholds[key] = { min, max };
   }
   saveCriteriaToStorage();
-  updateCriteriaButtonIndicator();
+  updateCriteriaPills();
   closeCriteriaModal();
   applyFilters();
 }
@@ -889,7 +912,7 @@ function resetCriteriaDefaults() {
     document.getElementById(`num-${key}-max`).value = d.max;
     updateCriteriaDisplay(key);
   }
-  updateCriteriaButtonIndicator();
+  updateCriteriaPills();
 }
 
 // Shows/hides the green dot on the ⚙ CRITERIA button.
