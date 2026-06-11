@@ -4,6 +4,7 @@
   "description": "",
   "main": "server.js",
   "scripts": {
+    "start": "node server.js",
     "test": "echo \"Tests passed\" && exit 0"
   },
   "keywords": [],
@@ -14,7 +15,6 @@
     "axios": "^1.17.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "express-rate-limit": "^7.0.0",
     "googleapis": "^173.0.0"
   }
 }

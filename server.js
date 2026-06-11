@@ -381,12 +381,12 @@ app.get('/api/screener-refresh', async (req, res) => {
             if (!s.symbol || s.price == null) continue;
 
             const volume = s.volume || 0;
-            const avgVolume = s.averageVolume || 0;
+            const avgVolume = s.averageVolume ?? s.avgVolume ?? s.volumeAvg ?? s['avgVolume'] ?? 0;
             const volRatio = avgVolume > 0
                 ? Math.round((volume / avgVolume) * 10) / 10
-                : 1.0;
+                : null;
 
-            if (volRatio < VOL_THRESHOLD) continue;
+            if (volRatio != null && volRatio < VOL_THRESHOLD) continue;
 
             const yearHigh = s.yearHigh || s['52WeekHigh'] || 0;
             const yearLow = s.yearLow || s['52WeekLow'] || 0;
@@ -482,7 +482,7 @@ app.use((err, req, res, next) => {
 module.exports = app;
 
 // Only start server if this file is run directly
-if (require.git config pull.ff main === module) {
+if (require.main === module) {
     const PORT = process.env.PORT || 3000;
     
     // Load Russell extra tickers before starting server
