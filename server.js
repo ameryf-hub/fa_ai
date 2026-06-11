@@ -3,7 +3,6 @@ const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
-const rateLimit = require('express-rate-limit');
 
 // ════════════════════════════════════════════════════════════════════════════════
 // ── CONFIGURATION & CONSTANTS
@@ -110,20 +109,38 @@ const app = express();
 app.use(express.json());
 
 // Middleware: Rate limiting
-// Limits API requests to prevent abuse and API quota depletion
-const apiLimiter = rateLimit({
-    windowMs: 60 * 1000, // 1 minute window
-    max: 30, // 30 requests per minute
-    message: 'Too many requests from this IP, please try again later.',
-    standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
-    legacyHeaders: false, // Disable `X-RateLimit-*` headers
-    skip: (req) => {
-        // Don't rate limit health check
-        return req.path === '/health';
-    }
-});
+// Limits API requests to prevent abuse and API quota depletion.
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute window
+const RATE_LIMIT_MAX = 30; // 30 requests per minute
 
-app.use('/api/', apiLimiter);
+app.use('/api/', (req, res, next) => {
+    if (req.path === '/health') return next();
+
+    const ip = req.ip || req.connection.remoteAddress || 'unknown';
+    const now = Date.now();
+    const entry = rateLimitMap.get(ip) || { count: 0, start: now };
+
+    if (now - entry.start > RATE_LIMIT_WINDOW_MS) {
+        entry.count = 1;
+        entry.start = now;
+    } else {
+        entry.count += 1;
+    }
+
+    rateLimitMap.set(ip, entry);
+
+    res.setHeader('RateLimit-Limit', RATE_LIMIT_MAX);
+    res.setHeader('RateLimit-Remaining', String(Math.max(0, RATE_LIMIT_MAX - entry.count)));
+    res.setHeader('RateLimit-Reset', String(Math.ceil((entry.start + RATE_LIMIT_WINDOW_MS - now) / 1000)));
+
+    if (entry.count > RATE_LIMIT_MAX) {
+        return res.status(429).json({
+            error: 'Too many requests from this IP, please try again later.'
+        });
+    }
+    next();
+});
 
 // Middleware: CORS (restricted to specific origins)
 app.use((req, res, next) => {
