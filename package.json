@@ -16,5 +16,17 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "googleapis": "^173.0.0"
-  }
+  },
+  "directories": {
+    "doc": "docs"
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ameryf-hub/fa_ai.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ameryf-hub/fa_ai/issues"
+  },
+  "homepage": "https://github.com/ameryf-hub/fa_ai#readme"
 }
