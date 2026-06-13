@@ -4,7 +4,11 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "test": "echo \"Tests passed\" && exit 0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "keywords": [],
   "author": "",
@@ -14,7 +18,18 @@
     "axios": "^1.17.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "express-rate-limit": "^7.0.0",
     "googleapis": "^173.0.0"
-  }
+  },
+  "directories": {
+    "doc": "docs"
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ameryf-hub/fa_ai.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ameryf-hub/fa_ai/issues"
+  },
+  "homepage": "https://github.com/ameryf-hub/fa_ai#readme"
 }

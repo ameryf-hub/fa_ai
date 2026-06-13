@@ -3,7 +3,6 @@ const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
-const rateLimit = require('express-rate-limit');
 
 // ════════════════════════════════════════════════════════════════════════════════
 // ── CONFIGURATION & CONSTANTS
@@ -12,6 +11,7 @@ const rateLimit = require('express-rate-limit');
 const FMP_BASE = 'https://financialmodelingprep.com/stable';
 const FMP_KEY = process.env.FMP_API_KEY || '';
 const CACHE_TTL = 60 * 1000; // 1 minute cache for API responses
+const ENRICH_LIMIT = 60; // Max candidates to enrich via per-symbol profile calls
 let RUSSELL_EXTRA = []; // Will be loaded from russell-extra.json
 
 /**
@@ -22,10 +22,14 @@ async function loadRussellExtra() {
         const filePath = path.join(__dirname, 'russell-extra.json');
         const data = await fs.readFile(filePath, 'utf-8');
         const config = JSON.parse(data);
-        RUSSELL_EXTRA = config.tickers || [];
+        RUSSELL_EXTRA = Array.isArray(config.tickers) ? config.tickers : [];
         console.log(`✓ Loaded ${RUSSELL_EXTRA.length} Russell extra tickers`);
     } catch (error) {
-        console.warn('⚠ Failed to load russell-extra.json:', error.message);
+        if (error.code === 'ENOENT') {
+            console.log('ℹ russell-extra.json not found; continuing without extra tickers.');
+        } else {
+            console.warn('⚠ Failed to load russell-extra.json:', error.message);
+        }
         RUSSELL_EXTRA = [];
     }
 }
@@ -106,20 +110,38 @@ const app = express();
 app.use(express.json());
 
 // Middleware: Rate limiting
-// Limits API requests to prevent abuse and API quota depletion
-const apiLimiter = rateLimit({
-    windowMs: 60 * 1000, // 1 minute window
-    max: 30, // 30 requests per minute
-    message: 'Too many requests from this IP, please try again later.',
-    standardHeaders: true, // Return rate limit info in `RateLimit-*` headers
-    legacyHeaders: false, // Disable `X-RateLimit-*` headers
-    skip: (req) => {
-        // Don't rate limit health check
-        return req.path === '/health';
-    }
-});
+// Limits API requests to prevent abuse and API quota depletion.
+const rateLimitMap = new Map();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute window
+const RATE_LIMIT_MAX = 30; // 30 requests per minute
 
-app.use('/api/', apiLimiter);
+app.use('/api/', (req, res, next) => {
+    if (req.path === '/health') return next();
+
+    const ip = req.ip || req.connection.remoteAddress || 'unknown';
+    const now = Date.now();
+    const entry = rateLimitMap.get(ip) || { count: 0, start: now };
+
+    if (now - entry.start > RATE_LIMIT_WINDOW_MS) {
+        entry.count = 1;
+        entry.start = now;
+    } else {
+        entry.count += 1;
+    }
+
+    rateLimitMap.set(ip, entry);
+
+    res.setHeader('RateLimit-Limit', RATE_LIMIT_MAX);
+    res.setHeader('RateLimit-Remaining', String(Math.max(0, RATE_LIMIT_MAX - entry.count)));
+    res.setHeader('RateLimit-Reset', String(Math.ceil((entry.start + RATE_LIMIT_WINDOW_MS - now) / 1000)));
+
+    if (entry.count > RATE_LIMIT_MAX) {
+        return res.status(429).json({
+            error: 'Too many requests from this IP, please try again later.'
+        });
+    }
+    next();
+});
 
 // Middleware: CORS (restricted to specific origins)
 app.use((req, res, next) => {
@@ -285,6 +307,39 @@ async function fetchDetail(sym) {
 }
 
 /**
+ * Enrich a list of symbols with profile data (averageVolume, 52-week range,
+ * beta, etc.) using the /stable/profile endpoint. Profile only accepts a
+ * single symbol per request, so calls are batched with light throttling.
+ */
+async function enrichProfiles(symbols) {
+    const profiles = {};
+    const batchSize = 10;
+    const throttleDelay = 100;
+
+    for (let i = 0; i < symbols.length; i += batchSize) {
+        const batch = symbols.slice(i, i + batchSize);
+
+        await Promise.all(batch.map(async (sym) => {
+            try {
+                const data = await fmpGet(`profile?symbol=${encodeURIComponent(sym)}`);
+                const p = Array.isArray(data) ? data[0] : data;
+                if (p && p.symbol) {
+                    profiles[p.symbol] = p;
+                }
+            } catch (e) {
+                console.warn(`  Profile fetch for ${sym} failed:`, e.message);
+            }
+        }));
+
+        if (i + batchSize < symbols.length) {
+            await sleep(throttleDelay);
+        }
+    }
+
+    return profiles;
+}
+
+/**
  * Compute stock screening score based on multiple factors
  */
 function computeScore({ volRatio, revGrowth, pe, epsGrowth, pct52H, beta }) {
@@ -353,28 +408,58 @@ app.get('/api/screener-refresh', async (req, res) => {
         const raw = Array.isArray(response.data) ? response.data : [];
         console.log(`  company-screener returned ${raw.length} stocks`);
 
+        // The /stable/company-screener payload only carries basic fields (no
+        // averageVolume or 52-week range). Narrow to tradable common stocks,
+        // then enrich the most liquid candidates via /stable/profile, which
+        // does include averageVolume, the 52-week range and beta.
+        const candidates = raw
+            .filter(s =>
+                s.symbol &&
+                s.price != null &&
+                s.isActivelyTrading !== false &&
+                !s.isEtf &&
+                !s.isFund &&
+                (s.country == null || s.country === 'US') &&
+                (s.volume || 0) > 0
+            )
+            .sort((a, b) => (b.volume || 0) - (a.volume || 0))
+            .slice(0, ENRICH_LIMIT);
+
+        console.log(`  Enriching ${candidates.length} candidates via /stable/profile...`);
+        const profiles = await enrichProfiles(candidates.map(c => c.symbol));
+
         const VOL_THRESHOLD = 1.3;
         const results = [];
 
-        for (const s of raw) {
-            if (!s.symbol || s.price == null) continue;
+        for (const s of candidates) {
+            const p = profiles[s.symbol] || {};
 
-            const volume = s.volume || 0;
-            const avgVolume = s.averageVolume || 0;
+            const price = p.price ?? s.price;
+            const volume = p.volume ?? s.volume ?? 0;
+            const avgVolume = p.averageVolume ?? 0;
             const volRatio = avgVolume > 0
                 ? Math.round((volume / avgVolume) * 10) / 10
-                : 1.0;
+                : null;
 
-            if (volRatio < VOL_THRESHOLD) continue;
+            if (volRatio != null && volRatio < VOL_THRESHOLD) continue;
 
-            const yearHigh = s.yearHigh || s['52WeekHigh'] || 0;
-            const yearLow = s.yearLow || s['52WeekLow'] || 0;
-            const pct52H = yearHigh > 0 ? Math.round((s.price / yearHigh) * 100) : 0;
-            const pe = s.pe != null ? Math.round(s.pe * 10) / 10 : null;
-            const beta = s.beta != null ? Math.round(s.beta * 100) / 100 : null;
-            const mktCap = s.marketCap || 0;
+            // 52-week range arrives as a "low-high" string on the profile.
+            let yearHigh = 0;
+            let yearLow = 0;
+            if (typeof p.range === 'string' && p.range.includes('-')) {
+                const [lo, hi] = p.range.split('-').map(v => parseFloat(v));
+                if (!Number.isNaN(lo)) yearLow = lo;
+                if (!Number.isNaN(hi)) yearHigh = hi;
+            }
 
-            // These metrics aren't available from screener endpoint
+            const pct52H = yearHigh > 0 ? Math.round((price / yearHigh) * 100) : 0;
+            const pe = null; // not exposed by these endpoints
+            const beta = (p.beta ?? s.beta) != null
+                ? Math.round((p.beta ?? s.beta) * 100) / 100
+                : null;
+            const mktCap = p.marketCap ?? s.marketCap ?? 0;
+
+            // Not available without additional per-symbol financial calls.
             const revGrowth = null;
             const epsGrowth = null;
 
@@ -382,12 +467,12 @@ app.get('/api/screener-refresh', async (req, res) => {
 
             results.push({
                 ticker: s.symbol,
-                companyName: s.companyName || s.symbol,
-                exchange: s.exchange || '—',
+                companyName: p.companyName || s.companyName || s.symbol,
+                exchange: p.exchange || s.exchange || '—',
                 index: s.index || '—',
-                sector: s.sector || '—',
-                price: s.price,
-                change: Math.round((s.changesPercentage || s.changePercentage || 0) * 100) / 100,
+                sector: p.sector || s.sector || '—',
+                price,
+                change: Math.round((p.changePercentage ?? s.changesPercentage ?? s.changePercentage ?? 0) * 100) / 100,
                 mktCap,
                 volRatio,
                 volume,
@@ -400,8 +485,8 @@ app.get('/api/screener-refresh', async (req, res) => {
                 beta,
                 pe,
                 score,
-                description: s.description || '',
-                website: s.website || ''
+                description: p.description || '',
+                website: p.website || ''
             });
         }
 

@@ -751,6 +751,7 @@ function doLogin() {
 window.addEventListener('load', () => {
   document.getElementById('login-user').focus();
   updateCriteriaButtonIndicator();
+  updateCriteriaPills();
 });
 
 
@@ -759,7 +760,7 @@ window.addEventListener('load', () => {
 // Backend URL — reads from the input so users can point to a remote server
 function getBackendURL() {
   const input = document.getElementById('api-key-input');
-  return (input ? input.value.trim() : '') || '';
+  return (input ? input.value.trim() : '') || window.location.origin;
 }
 
 let STOCKS = [];
@@ -862,16 +863,38 @@ function updateCriteriaDisplay(key) {
   badge.style.display = isActive ? 'inline-block' : 'none';
 }
 
+function formatCriteriaRangeLabel(key, min, max) {
+  const suffix = (key === 'volRatio') ? '×' : (key === 'score') ? '' : '%';
+  if (min === CRITERIA_DEFAULTS[key].min && max === CRITERIA_DEFAULTS[key].max) {
+    return 'Default';
+  }
+  return `${min}${suffix} → ${max}${suffix}`;
+}
+
+function updateCriteriaPills() {
+  for (const key of Object.keys(CRITERIA_DEFAULTS)) {
+    const t = criteriaThresholds[key];
+    const pill = document.getElementById(`pill-${key}`);
+    const range = document.getElementById(`pill-range-${key}`);
+    const active = isCriteriaActive(key);
+    if (pill) pill.classList.toggle('customized', active);
+    if (range) range.textContent = formatCriteriaRangeLabel(key, t.min, t.max);
+  }
+  updateCriteriaButtonIndicator();
+}
+
 // Reads modal inputs → writes to criteriaThresholds → saves → closes → filters.
 function applyCriteriaAndClose() {
   for (const key of Object.keys(CRITERIA_DEFAULTS)) {
-    criteriaThresholds[key] = {
-      min: parseFloat(document.getElementById(`num-${key}-min`).value),
-      max: parseFloat(document.getElementById(`num-${key}-max`).value),
-    };
+    let min = parseFloat(document.getElementById(`num-${key}-min`).value);
+    let max = parseFloat(document.getElementById(`num-${key}-max`).value);
+    if (!Number.isFinite(min)) min = CRITERIA_DEFAULTS[key].min;
+    if (!Number.isFinite(max)) max = CRITERIA_DEFAULTS[key].max;
+    if (min > max) [min, max] = [max, min];
+    criteriaThresholds[key] = { min, max };
   }
   saveCriteriaToStorage();
-  updateCriteriaButtonIndicator();
+  updateCriteriaPills();
   closeCriteriaModal();
   applyFilters();
 }
@@ -889,7 +912,7 @@ function resetCriteriaDefaults() {
     document.getElementById(`num-${key}-max`).value = d.max;
     updateCriteriaDisplay(key);
   }
-  updateCriteriaButtonIndicator();
+  updateCriteriaPills();
 }
 
 // Shows/hides the green dot on the ⚙ CRITERIA button.
@@ -971,9 +994,10 @@ async function loadAllData() {
 }
 
 function getSignal(s) {
-  if (s.volRatio >= 3.0 && s.pct52H >= 85) return 'BREAKOUT';
-  if (s.volRatio >= 2.0 || (s.volRatio >= 1.5 && s.pct52H >= 80)) return 'WATCH';
-  if (s.volRatio >= 1.3) return 'BUILDING';
+  const vr = Number.isFinite(s.volRatio) ? s.volRatio : 0;
+  if (vr >= 3.0 && s.pct52H >= 85) return 'BREAKOUT';
+  if (vr >= 2.0 || (vr >= 1.5 && s.pct52H >= 80)) return 'WATCH';
+  if (vr >= 1.3) return 'BUILDING';
   return 'QUIET';
 }
 
@@ -992,9 +1016,10 @@ function fmtVol(v) {
 
 function sparkBars(s) {
   const seed = s.ticker.charCodeAt(0) + (s.ticker.charCodeAt(1)||0);
+  const vr = Number.isFinite(s.volRatio) ? s.volRatio : 0;
   return Array.from({length:12},(_,i) => {
     const h = 6 + Math.abs(Math.sin(seed+i*1.7)*16 + Math.cos(i*0.9+seed*0.1)*6);
-    const cls = i<8?'flat':(i===11&&s.volRatio>2?'spike':'up');
+    const cls = i<8?'flat':(i===11&&vr>2?'spike':'up');
     return `<div class="mini-bar ${cls}" style="height:${Math.round(h)}px"></div>`;
   }).join('');
 }
@@ -1004,8 +1029,11 @@ function renderRow(s) {
   const ac = sig==='BREAKOUT'?'alert-high':sig==='WATCH'?'alert-mid':sig==='BUILDING'?'alert-low':'';
   const chgCol = s.change>=0?'var(--green)':'var(--red)';
   const chgStr = (s.change>=0?'+':'')+s.change.toFixed(2)+'%';
-  const vrCls = s.volRatio>=3?'spike':s.volRatio>=2?'elevated':'normal';
-  const vrBar = s.volRatio>=3?'':s.volRatio>=2?'yellow':'gray';
+  const vr = Number.isFinite(s.volRatio) ? s.volRatio : null;
+  const vrLabel = vr!=null ? vr.toFixed(1)+'×' : '—';
+  const vrCls = vr>=3?'spike':vr>=2?'elevated':'normal';
+  const vrBar = vr>=3?'':vr>=2?'yellow':'gray';
+  const vrWidth = vr!=null ? Math.min(100,vr/6*100) : 0;
   const revCol = s.revGrowth==null?'var(--text2)':s.revGrowth>0?'var(--accent)':'var(--red)';
   const h52Col = s.pct52H>=90?'var(--green)':s.pct52H>=75?'var(--yellow)':'var(--text2)';
   return `
@@ -1016,8 +1044,8 @@ function renderRow(s) {
     <div class="col" style="color:${revCol}">${s.revGrowth!=null?(s.revGrowth>0?'+':'')+s.revGrowth+'%':'—'}</div>
     <div class="col">
       <div class="vol-cell">
-        <div class="vol-ratio ${vrCls}">${s.volRatio.toFixed(1)}×</div>
-        <div class="vol-bar-bg"><div class="vol-bar-fill ${vrBar}" style="width:${Math.min(100,s.volRatio/6*100)}%"></div></div>
+        <div class="vol-ratio ${vrCls}">${vrLabel}</div>
+        <div class="vol-bar-bg"><div class="vol-bar-fill ${vrBar}" style="width:${vrWidth}%"></div></div>
       </div>
     </div>
     <div class="col" style="color:${h52Col};font-size:10px">${s.pct52H}%<br><span style="color:var(--muted);font-size:8px">of $${s.yearHigh?.toFixed(0)||'—'}</span></div>
@@ -1038,7 +1066,11 @@ function renderRow(s) {
 
 function renderDetail(s) {
   const sig = getSignal(s);
-  const vStepCls = s.volRatio>=3?'active':s.volRatio>=2?'building':'';
+  const vr = Number.isFinite(s.volRatio) ? s.volRatio : null;
+  const vrLabel = vr!=null ? vr.toFixed(2)+'×' : '—';
+  const vStepCls = vr>=3?'active':vr>=2?'building':'';
+  const vrRatioCls = vr>=3?'high':vr>=2?'med':'low';
+  const vrDesc = vr>=3?'✓ INSTITUTIONAL SPIKE':vr>=2?'⟳ ELEVATED':'— Normal';
   return `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
       <div>
@@ -1062,20 +1094,20 @@ function renderDetail(s) {
       <div class="vol-steps">
         <div class="vol-step ${vStepCls}" style="position:relative">
           <div class="step-label">Current Volume</div>
-          <div class="step-ratio ${s.volRatio>=3?'high':s.volRatio>=2?'med':'low'}">${fmtVol(s.volume)}</div>
-          <div class="step-desc">Live from FMP /stable/quote</div>
+          <div class="step-ratio ${vrRatioCls}">${fmtVol(s.volume)}</div>
+          <div class="step-desc">Live from FMP /stable/profile</div>
           <div class="step-arrow">›</div>
         </div>
         <div class="vol-step" style="position:relative">
           <div class="step-label">Average Volume</div>
           <div class="step-ratio low">${fmtVol(s.avgVolume)}</div>
-          <div class="step-desc">20-day avg from FMP</div>
+          <div class="step-desc">Avg volume from FMP</div>
           <div class="step-arrow">›</div>
         </div>
         <div class="vol-step ${vStepCls}">
           <div class="step-label">Surge Ratio</div>
-          <div class="step-ratio ${s.volRatio>=3?'high':s.volRatio>=2?'med':'low'}">${s.volRatio.toFixed(2)}×</div>
-          <div class="step-desc">${s.volRatio>=3?'✓ INSTITUTIONAL SPIKE':s.volRatio>=2?'⟳ ELEVATED':'— Normal'}</div>
+          <div class="step-ratio ${vrRatioCls}">${vrLabel}</div>
+          <div class="step-desc">${vrDesc}</div>
         </div>
       </div>
     </div>
@@ -1147,7 +1179,7 @@ function applyFilters() {
 
   data.sort((a,b) => {
     if (sort==='score')     return b.score - a.score;
-    if (sort==='volRatio')  return b.volRatio - a.volRatio;
+    if (sort==='volRatio')  return (b.volRatio||0) - (a.volRatio||0);
     if (sort==='change')    return b.change - a.change;
     if (sort==='revGrowth') return (b.revGrowth||0) - (a.revGrowth||0);
     return 0;
@@ -1164,7 +1196,7 @@ function applyFilters() {
 
   const bo = data.filter(s=>getSignal(s)==='BREAKOUT').sort((a,b)=>b.score-a.score);
   document.getElementById('alert-ticker').innerHTML = bo.length
-    ? bo.map(s=>`<span>${s.ticker}</span> surge ${s.volRatio}× · ${s.pct52H}% of 52W high · Score <span>${s.score}</span>`).join(' &nbsp;·&nbsp; ')
+    ? bo.map(s=>`<span>${s.ticker}</span> surge ${Number.isFinite(s.volRatio)?s.volRatio:'—'}× · ${s.pct52H}% of 52W high · Score <span>${s.score}</span>`).join(' &nbsp;·&nbsp; ')
     : `Monitoring ${STOCKS.length} symbols via FMP /stable/ — no cascade breakouts currently active.`;
 }
 
@@ -1176,7 +1208,7 @@ function exportCSV() {
     s.ticker,`"${s.companyName}"`,s.sector,s.exchange,s.index,
     s.price,s.change.toFixed(2),s.mktCap,
     s.revGrowth??'',s.epsGrowth??'',
-    s.volRatio,s.volume,s.avgVolume,s.pct52H,s.yearHigh,s.yearLow,
+    s.volRatio??'',s.volume,s.avgVolume,s.pct52H,s.yearHigh,s.yearLow,
     s.beta??'',s.pe??'',s.score,getSignal(s)
   ].join(','));
   const blob = new Blob([[hdr,...rows].join('\n')],{type:'text/csv'});
