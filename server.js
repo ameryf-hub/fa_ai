@@ -363,6 +363,220 @@ function computeScore({ volRatio, revGrowth, pe, epsGrowth, pct52H, beta }) {
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
+// ── FUNDAMENTALS ANALYSIS (Data Explorer)
+// ════════════════════════════════════════════════════════════════════════════════
+
+// Simple JSON file "database" for the analysis snapshot.
+const DATA_DIR = path.join(__dirname, 'data');
+const FUNDAMENTALS_DB = path.join(DATA_DIR, 'fundamentals.json');
+
+// How many of the largest companies to analyse per refresh. Kept modest to
+// stay within FMP rate limits (each symbol triggers several endpoint calls).
+const FUNDAMENTALS_LIMIT = 50;
+
+/**
+ * Read the first numeric value found across a list of candidate keys.
+ */
+function pickNum(obj, keys) {
+    if (!obj) return null;
+    for (const k of keys) {
+        const v = obj[k];
+        if (v != null && v !== '' && Number.isFinite(Number(v))) {
+            return Number(v);
+        }
+    }
+    return null;
+}
+
+const round = (v, d = 2) => (v == null ? null : Math.round(v * 10 ** d) / 10 ** d);
+
+/**
+ * Fetch a single endpoint and return the first object (or null on failure).
+ */
+async function fmpFirst(endpoint) {
+    try {
+        const data = await fmpGet(endpoint);
+        if (Array.isArray(data)) return data[0] || null;
+        return data || null;
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Fetch the full fundamentals bundle for one symbol and compute scores.
+ */
+async function fetchFundamentals(sym) {
+    const enc = encodeURIComponent(sym);
+
+    const [profile, ratios, keyMetrics, growth, dcf, scores, estimatesRaw] = await Promise.all([
+        fmpFirst(`profile?symbol=${enc}`),
+        fmpFirst(`ratios-ttm?symbol=${enc}`),
+        fmpFirst(`key-metrics-ttm?symbol=${enc}`),
+        fmpFirst(`financial-growth?symbol=${enc}&limit=1`),
+        fmpFirst(`discounted-cash-flow?symbol=${enc}`),
+        fmpFirst(`financial-scores?symbol=${enc}`),
+        (async () => {
+            try {
+                const d = await fmpGet(`analyst-estimates?symbol=${enc}&period=annual&limit=6`);
+                return Array.isArray(d) ? d : [];
+            } catch (e) { return []; }
+        })()
+    ]);
+
+    const price = pickNum(profile, ['price']) ?? pickNum(dcf, ['Stock Price', 'price']);
+    const mktCap = pickNum(profile, ['marketCap', 'mktCap']);
+
+    // Current (trailing) P/E.
+    const pe = pickNum(ratios, ['priceToEarningsRatioTTM', 'peRatioTTM'])
+        ?? pickNum(keyMetrics, ['peRatioTTM'])
+        ?? pickNum(profile, ['pe']);
+
+    // Revenue growth (trailing YoY) as a percentage.
+    const revGrowth = (() => {
+        const g = pickNum(growth, ['revenueGrowth']);
+        return g == null ? null : round(g * 100, 1);
+    })();
+
+    // Discounted cash flow fair value.
+    const dcfValue = pickNum(dcf, ['dcf', 'discountedCashFlow']);
+    const dcfUpside = (dcfValue != null && price) ? round(((dcfValue - price) / price) * 100, 1) : null;
+
+    // Altman Z-Score and Piotroski F-Score.
+    const altman = pickNum(scores, ['altmanZScore', 'altmanZ']);
+    const piotroski = pickNum(scores, ['piotroskiScore', 'piotroski']);
+
+    // Forward estimates: pull annual analyst estimates sorted ascending by date.
+    const estimates = estimatesRaw
+        .map(e => ({
+            year: (e.date || '').slice(0, 4),
+            eps: pickNum(e, ['estimatedEpsAvg', 'epsAvg', 'estimatedEps']),
+            rev: pickNum(e, ['estimatedRevenueAvg', 'revenueAvg', 'estimatedRevenue'])
+        }))
+        .filter(e => e.year)
+        .sort((a, b) => a.year - b.year);
+
+    const nowYear = new Date().getFullYear();
+    const future = estimates.filter(e => Number(e.year) >= nowYear);
+
+    // Forward P/E from the nearest future-year EPS estimate.
+    let forwardPE = null;
+    const nextEps = future.find(e => e.eps != null && e.eps > 0);
+    if (nextEps && price) forwardPE = round(price / nextEps.eps, 2);
+
+    // Expected revenue growth (CAGR) across available forward estimates.
+    let fwdRevGrowth = null;
+    const revPts = future.filter(e => e.rev != null && e.rev > 0);
+    if (revPts.length >= 2) {
+        const first = revPts[0];
+        const last = revPts[revPts.length - 1];
+        const yrs = Number(last.year) - Number(first.year);
+        if (yrs > 0) {
+            fwdRevGrowth = round((Math.pow(last.rev / first.rev, 1 / yrs) - 1) * 100, 1);
+        }
+    }
+
+    // ── Composite scores (0–100) ──
+    // Growth: trailing revenue growth + forward revenue growth.
+    const growthScore = (() => {
+        const a = revGrowth != null ? Math.min(50, Math.max(0, (revGrowth / 40) * 50)) : 15;
+        const b = fwdRevGrowth != null ? Math.min(50, Math.max(0, (fwdRevGrowth / 25) * 50)) : 15;
+        return Math.round(a + b);
+    })();
+
+    // Value: lower P/E and DCF upside score higher.
+    const valueScore = (() => {
+        let peScore = 25;
+        if (pe != null && pe > 0) peScore = Math.max(0, Math.min(50, 50 - (pe - 10) * 1.2));
+        let dcfScore = 25;
+        if (dcfUpside != null) dcfScore = Math.max(0, Math.min(50, 25 + dcfUpside * 0.5));
+        return Math.round(peScore + dcfScore);
+    })();
+
+    // Quality: Altman Z (solvency) + Piotroski F (fundamental health).
+    const qualityScore = (() => {
+        let z = 20;
+        if (altman != null) z = Math.max(0, Math.min(50, (altman / 6) * 50));
+        let f = 25;
+        if (piotroski != null) f = Math.max(0, Math.min(50, (piotroski / 9) * 50));
+        return Math.round(z + f);
+    })();
+
+    return {
+        ticker: sym,
+        companyName: profile?.companyName || sym,
+        sector: profile?.sector || '—',
+        exchange: profile?.exchange || '—',
+        price: round(price, 2),
+        mktCap: mktCap || 0,
+        pe: round(pe, 2),
+        forwardPE,
+        dcf: round(dcfValue, 2),
+        dcfUpside,
+        revGrowth,
+        fwdRevGrowth,
+        altman: round(altman, 2),
+        piotroski: piotroski != null ? Math.round(piotroski) : null,
+        growthScore,
+        valueScore,
+        qualityScore
+    };
+}
+
+/**
+ * Build the fundamentals dataset for the largest companies and persist it.
+ */
+async function buildFundamentals() {
+    console.log('  Building fundamentals dataset...');
+    const url = `${FMP_BASE}/company-screener?apikey=${FMP_KEY}`;
+    const response = await axios.get(url, { timeout: 30000 });
+    const raw = Array.isArray(response.data) ? response.data : [];
+
+    const candidates = raw
+        .filter(s =>
+            s.symbol &&
+            s.price != null &&
+            s.isActivelyTrading !== false &&
+            !s.isEtf &&
+            !s.isFund &&
+            (s.country == null || s.country === 'US') &&
+            (s.marketCap || 0) > 0
+        )
+        .sort((a, b) => (b.marketCap || 0) - (a.marketCap || 0))
+        .slice(0, FUNDAMENTALS_LIMIT);
+
+    const stocks = [];
+    const batchSize = 5;
+    for (let i = 0; i < candidates.length; i += batchSize) {
+        const batch = candidates.slice(i, i + batchSize);
+        const rows = await Promise.all(batch.map(c => fetchFundamentals(c.symbol)));
+        stocks.push(...rows.filter(Boolean));
+        if (i + batchSize < candidates.length) await sleep(120);
+    }
+
+    // Sort by market cap descending by default.
+    stocks.sort((a, b) => (b.mktCap || 0) - (a.mktCap || 0));
+
+    const payload = {
+        lastUpdated: getETTime(),
+        generatedAt: new Date().toISOString(),
+        count: stocks.length,
+        stocks
+    };
+
+    // Persist to the JSON "database".
+    try {
+        await fs.mkdir(DATA_DIR, { recursive: true });
+        await fs.writeFile(FUNDAMENTALS_DB, JSON.stringify(payload, null, 2), 'utf-8');
+        console.log(`  ✓ Saved ${stocks.length} rows to data/fundamentals.json`);
+    } catch (e) {
+        console.warn('  ⚠ Failed to persist fundamentals DB:', e.message);
+    }
+
+    return payload;
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
 // ── ROUTES
 // ════════════════════════════════════════════════════════════════════════════════
 
@@ -509,6 +723,46 @@ app.get('/api/screener-refresh', async (req, res) => {
         console.error('Pipeline error:', err.message);
         res.status(500).json({
             error: 'Screener refresh failed',
+            message: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
+        });
+    }
+});
+
+/**
+ * Fundamentals dataset endpoint (Data Explorer).
+ * Returns the cached/saved snapshot. Pass ?refresh=1 to rebuild from FMP.
+ */
+app.get('/api/fundamentals', async (req, res) => {
+    console.log(`\n=== FUNDAMENTALS REQUEST [${getETTime()}] ===`);
+    try {
+        const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
+
+        if (!forceRefresh) {
+            // 1) In-memory cache
+            const cached = apiCache.get('fundamentals');
+            if (cached) {
+                console.log('  Returning cached fundamentals');
+                return res.json(cached);
+            }
+            // 2) On-disk JSON database
+            try {
+                const disk = await fs.readFile(FUNDAMENTALS_DB, 'utf-8');
+                const parsed = JSON.parse(disk);
+                apiCache.set('fundamentals', parsed);
+                console.log('  Returning fundamentals from disk DB');
+                return res.json(parsed);
+            } catch (e) {
+                // No saved DB yet — fall through to build it.
+            }
+        }
+
+        const payload = await buildFundamentals();
+        apiCache.set('fundamentals', payload);
+        res.json(payload);
+    } catch (err) {
+        console.error('Fundamentals error:', err.message);
+        res.status(500).json({
+            error: 'Fundamentals build failed',
             message: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
         });
     }
