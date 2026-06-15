@@ -184,6 +184,41 @@ async function getFilterRun(id) {
 }
 
 /**
+ * Fetch recent filter runs INCLUDING their full results blob, ordered newest
+ * first.  Used by the AI trend-prediction endpoint.
+ *
+ * @param {number} limit - Max rows to return (capped at 50)
+ * @returns {Promise<object[]>}
+ */
+async function getRecentFilterRuns(limit = 10) {
+    if (!ready) return [];
+    try {
+        const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 50);
+        const r = await pool.query(
+            `SELECT id, label, criteria, result_count, results, created_at
+             FROM filter_runs
+             ORDER BY created_at DESC
+             LIMIT $1`,
+            [safeLimit]
+        );
+        return r.rows;
+    } catch (err) {
+        console.warn('⚠ getRecentFilterRuns failed:', err.message);
+        return [];
+    }
+}
+
+/**
+ * Return the most recent non-expired fundamentals snapshot payload, or null.
+ * Thin wrapper around getFreshSnapshot('fundamentals') for explicit naming.
+ *
+ * @returns {Promise<object|null>}
+ */
+async function getFundamentalsSnapshot() {
+    return getFreshSnapshot('fundamentals');
+}
+
+/**
  * Delete expired snapshots and filter runs older than the retention window.
  */
 async function cleanup() {
@@ -211,6 +246,8 @@ module.exports = {
     saveFilterRun,
     listFilterRuns,
     getFilterRun,
+    getRecentFilterRuns,
+    getFundamentalsSnapshot,
     cleanup,
     SNAPSHOT_TTL_DAYS,
     HISTORY_RETENTION_DAYS,

@@ -15,6 +15,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.55.0",
     "axios": "^1.17.0",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
