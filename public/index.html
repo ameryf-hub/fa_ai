@@ -335,8 +335,9 @@
   .explorer-link .el-text strong { font-size:11px; letter-spacing:0.1em; color:var(--accent2); text-transform:uppercase; }
   .explorer-link .el-text em { font-size:10px; color:var(--text2); font-style:normal; font-family:'IBM Plex Sans',sans-serif; line-height:1.4; }
 
-  #explorer-overlay { display:none; position:fixed; inset:0; z-index:8500; background:rgba(8,11,16,0.9); backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:20px; }
-  #explorer-overlay.open { display:flex; }
+  #explorer-overlay, #history-overlay { display:none; position:fixed; inset:0; z-index:8500; background:rgba(8,11,16,0.9); backdrop-filter:blur(4px); align-items:center; justify-content:center; padding:20px; }
+  #explorer-overlay.open, #history-overlay.open { display:flex; }
+  table.ex-table tbody td .row-link { color:var(--accent); cursor:pointer; text-decoration:underline; }
   .explorer-box { background:var(--panel); border:1px solid var(--border2); border-top:2px solid var(--accent2); width:100%; max-width:1300px; max-height:92vh; display:flex; flex-direction:column; box-shadow:0 0 60px rgba(255,107,53,0.12); }
   .ex-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 22px; border-bottom:1px solid var(--border2); flex-wrap:wrap; }
   .ex-title { font-size:10px; letter-spacing:0.25em; color:var(--accent2); text-transform:uppercase; }
@@ -556,6 +557,7 @@
     </div>
     <button class="btn primary" id="refresh-btn" onclick="loadAllData()">⟳ REFRESH SCREEN</button>
     <button class="btn" onclick="exportCSV()">↓ EXPORT CSV</button>
+    <button class="btn" onclick="saveCurrentRun()">💾 SAVE RUN</button>
     <div class="btn-criteria-indicator" id="criteria-btn-wrap">
       <button class="btn" onclick="openCriteriaModal()">⚙ CRITERIA</button>
       <span class="active-dot"></span>
@@ -631,6 +633,10 @@
         <span class="el-icon">🗄️</span>
         <span class="el-text"><strong>Full Analysis Table</strong><em>Every metric: DCF, Altman, Piotroski, scores…</em></span>
       </a>
+      <a class="explorer-link" onclick="openHistory()">
+        <span class="el-icon">🕑</span>
+        <span class="el-text"><strong>Filter History</strong><em>Saved filter runs — stored 90 days for analysis</em></span>
+      </a>
     </div>
   </div>
 
@@ -652,6 +658,23 @@
     <div class="ex-meta" id="ex-meta"></div>
     <div class="ex-table-wrap" id="ex-table-wrap">
       <div class="msg-box">⟳ Loading fundamentals…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── FILTER HISTORY OVERLAY ── -->
+<div id="history-overlay" onclick="handleHistoryBackdrop(event)">
+  <div class="explorer-box">
+    <div class="ex-header">
+      <div class="ex-title">▸ Filter History — Saved Runs</div>
+      <div class="ex-actions">
+        <button class="btn-sm" onclick="loadHistory()">⟳ REFRESH</button>
+        <button class="cm-close" onclick="closeHistory()">✕</button>
+      </div>
+    </div>
+    <div class="ex-meta" id="hist-meta"></div>
+    <div class="ex-table-wrap" id="hist-table-wrap">
+      <div class="msg-box">⟳ Loading history…</div>
     </div>
   </div>
 </div>
@@ -1447,6 +1470,193 @@ function exportExplorerCSV() {
 }
 
 function printExplorer() { window.print(); }
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── FILTER HISTORY (PostgreSQL-backed)
+// ════════════════════════════════════════════════════════════════════════════
+
+// Capture the criteria + standard filters currently applied, for saving.
+function currentCriteriaSnapshot() {
+  const snap = {
+    index:  document.getElementById('filter-index').value,
+    signal: document.getElementById('filter-signal').value,
+    sector: document.getElementById('filter-sector').value,
+    minScore: parseInt(document.getElementById('filter-score').value),
+    sortBy: document.getElementById('sort-by').value,
+    thresholds: {}
+  };
+  for (const key of Object.keys(CRITERIA_DEFAULTS)) {
+    if (isCriteriaActive(key)) snap.thresholds[key] = { ...criteriaThresholds[key] };
+  }
+  return snap;
+}
+
+// Recompute the currently-filtered dataset (same logic as applyFilters).
+function currentFilteredData() {
+  const idx   = document.getElementById('filter-index').value;
+  const sig   = document.getElementById('filter-signal').value;
+  const sec   = document.getElementById('filter-sector').value;
+  const minSc = parseInt(document.getElementById('filter-score').value);
+  const sort  = document.getElementById('sort-by').value;
+  const criteriaFilters = Object.keys(CRITERIA_DEFAULTS)
+    .filter(key => isCriteriaActive(key))
+    .map(key => ({ key, min: criteriaThresholds[key].min, max: criteriaThresholds[key].max }));
+
+  let data = STOCKS.filter(s => {
+    const signal = getSignal(s);
+    const secMatch = sec==='ALL' || (s.sector||'').toLowerCase().includes(sec.toLowerCase());
+    if (!(idx==='ALL' || s.index===idx)) return false;
+    if (!(sig==='ALL' || signal===sig))  return false;
+    if (!secMatch)                        return false;
+    if (s.score < minSc)                  return false;
+    for (const f of criteriaFilters) {
+      const val = s[f.key];
+      if (val == null) { if (f.min > 0) return false; continue; }
+      if (val < f.min || val > f.max) return false;
+    }
+    return true;
+  });
+  data.sort((a,b) => {
+    if (sort==='score')     return b.score - a.score;
+    if (sort==='volRatio')  return (b.volRatio||0) - (a.volRatio||0);
+    if (sort==='change')    return b.change - a.change;
+    if (sort==='revGrowth') return (b.revGrowth||0) - (a.revGrowth||0);
+    return 0;
+  });
+  return data;
+}
+
+async function saveCurrentRun() {
+  if (!STOCKS.length) { alert('No data loaded. Click REFRESH SCREEN first.'); return; }
+  const data = currentFilteredData();
+  if (!data.length) { alert('No stocks match the current filters — nothing to save.'); return; }
+  const label = prompt(`Label this filter run (${data.length} stocks):`, `Run ${new Date().toLocaleString()}`);
+  if (label === null) return; // cancelled
+
+  // Trim each result to the fields worth analysing later.
+  const results = data.map(s => ({
+    ticker: s.ticker, companyName: s.companyName, sector: s.sector, index: s.index,
+    price: s.price, change: s.change, mktCap: s.mktCap, revGrowth: s.revGrowth,
+    epsGrowth: s.epsGrowth, volRatio: s.volRatio, pct52H: s.pct52H, beta: s.beta,
+    pe: s.pe, score: s.score, signal: getSignal(s)
+  }));
+
+  try {
+    const res = await fetch(`${getBackendURL()}/api/filter-runs`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label, criteria: currentCriteriaSnapshot(), results })
+    });
+    if (res.status === 503) { alert('History database not configured on the server.'); return; }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const j = await res.json();
+    alert(`✓ Saved filter run #${j.id} (${results.length} stocks). View it under Data Explorer → Filter History.`);
+  } catch (err) {
+    alert(`⚠ Could not save run: ${err.message}`);
+  }
+}
+
+function openHistory() {
+  document.getElementById('history-overlay').classList.add('open');
+  loadHistory();
+}
+function closeHistory() {
+  document.getElementById('history-overlay').classList.remove('open');
+}
+function handleHistoryBackdrop(e) {
+  if (e.target === document.getElementById('history-overlay')) closeHistory();
+}
+
+async function loadHistory() {
+  const wrap = document.getElementById('hist-table-wrap');
+  wrap.innerHTML = '<div class="msg-box">⟳ Loading history…</div>';
+  document.getElementById('hist-meta').textContent = '';
+  try {
+    const res = await fetch(`${getBackendURL()}/api/filter-runs?limit=100`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const j = await res.json();
+    if (!j.dbEnabled) {
+      wrap.innerHTML = '<div class="msg-box">History database is not configured on the server. Set DATABASE_URL in Railway to enable saved runs.</div>';
+      return;
+    }
+    const runs = j.runs || [];
+    document.getElementById('hist-meta').textContent =
+      `${runs.length} saved run(s) · auto-deleted after ${j.retentionDays} days`;
+    if (!runs.length) {
+      wrap.innerHTML = '<div class="msg-box">No saved runs yet. Apply filters, then click 💾 SAVE RUN.</div>';
+      return;
+    }
+    const thead = '<tr><th class="left">#</th><th class="left">Label</th><th>Stocks</th><th class="left">Saved</th><th class="left">Actions</th></tr>';
+    const tbody = runs.map(r => {
+      const dt = new Date(r.created_at).toLocaleString();
+      return `<tr>
+        <td class="left rank">${r.id}</td>
+        <td class="left">${(r.label||'—').replace(/</g,'&lt;')}</td>
+        <td>${r.result_count ?? '—'}</td>
+        <td class="left">${dt}</td>
+        <td class="left"><span class="row-link" onclick="viewRun('${r.id}')">view</span> · <span class="row-link" onclick="exportRunCSV('${r.id}')">csv</span></td>
+      </tr>`;
+    }).join('');
+    wrap.innerHTML = `<table class="ex-table"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+  } catch (err) {
+    wrap.innerHTML = `<div class="msg-box error">⚠ ${err.message}</div>`;
+  }
+}
+
+async function fetchRun(id) {
+  const res = await fetch(`${getBackendURL()}/api/filter-runs/${id}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function viewRun(id) {
+  const wrap = document.getElementById('hist-table-wrap');
+  wrap.innerHTML = '<div class="msg-box">⟳ Loading run…</div>';
+  try {
+    const run = await fetchRun(id);
+    const rows = Array.isArray(run.results) ? run.results : [];
+    document.getElementById('hist-meta').innerHTML =
+      `Run #${run.id} · <strong>${(run.label||'—')}</strong> · ${rows.length} stocks · ${new Date(run.created_at).toLocaleString()} · <span class="row-link" onclick="loadHistory()">← back to list</span>`;
+    if (!rows.length) { wrap.innerHTML = '<div class="msg-box">This run has no stored results.</div>'; return; }
+    const cols = ['Ticker','Sector','Price','Chg %','Rev Gr','Vol×','52W%','Beta','P/E','Score','Signal'];
+    const left = new Set(['Ticker','Sector','Signal']);
+    const thead = '<tr>' + cols.map(c=>`<th class="${left.has(c)?'left':''}">${c}</th>`).join('') + '</tr>';
+    const tbody = rows.map(s=>`<tr>
+      <td class="left tk">${s.ticker}</td><td class="left">${s.sector||'—'}</td>
+      <td>$${fmtNum(s.price)}</td>
+      <td class="${s.change>=0?'pos':'neg'}">${s.change!=null?(s.change>=0?'+':'')+Number(s.change).toFixed(2)+'%':'—'}</td>
+      <td class="${pctClass(s.revGrowth)}">${s.revGrowth!=null?(s.revGrowth>0?'+':'')+s.revGrowth+'%':'—'}</td>
+      <td>${s.volRatio!=null?Number(s.volRatio).toFixed(1)+'×':'—'}</td>
+      <td>${s.pct52H ?? '—'}%</td><td>${s.beta ?? '—'}</td><td>${s.pe ?? '—'}</td>
+      <td><span class="score-cell ${scoreClass(s.score)}">${s.score ?? '—'}</span></td>
+      <td class="left">${s.signal || '—'}</td>
+    </tr>`).join('');
+    wrap.innerHTML = `<table class="ex-table"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+  } catch (err) {
+    wrap.innerHTML = `<div class="msg-box error">⚠ ${err.message}</div>`;
+  }
+}
+
+async function exportRunCSV(id) {
+  try {
+    const run = await fetchRun(id);
+    const rows = Array.isArray(run.results) ? run.results : [];
+    if (!rows.length) { alert('This run has no stored results.'); return; }
+    const hdr = 'Ticker,Company,Sector,Index,Price,Change%,MarketCap,RevGrowth%,EpsGrowth%,VolRatio,52WHigh%,Beta,PE,Score,Signal';
+    const csv = rows.map(s=>[
+      s.ticker,`"${(s.companyName||'').replace(/"/g,'""')}"`,s.sector,s.index,
+      s.price??'',s.change??'',s.mktCap??'',s.revGrowth??'',s.epsGrowth??'',
+      s.volRatio??'',s.pct52H??'',s.beta??'',s.pe??'',s.score??'',s.signal||''
+    ].join(','));
+    const blob = new Blob([[hdr,...csv].join('\n')],{type:'text/csv'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `apex-run-${id}-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+  } catch (err) {
+    alert(`⚠ Export failed: ${err.message}`);
+  }
+}
 
 // Auto-refresh every 60 seconds once data is loaded
 setInterval(() => { if (STOCKS.length > 0) loadAllData(); }, 60000);
