@@ -3,6 +3,7 @@ const express = require('express');
 const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
+const db = require('./db');
 
 // ════════════════════════════════════════════════════════════════════════════════
 // ── CONFIGURATION & CONSTANTS
@@ -564,7 +565,10 @@ async function buildFundamentals() {
         stocks
     };
 
-    // Persist to the JSON "database".
+    // Persist to PostgreSQL (time-bounded snapshot) when available...
+    await db.saveSnapshot('fundamentals', payload);
+
+    // ...and always keep a local JSON copy as a fallback / export source.
     try {
         await fs.mkdir(DATA_DIR, { recursive: true });
         await fs.writeFile(FUNDAMENTALS_DB, JSON.stringify(payload, null, 2), 'utf-8');
@@ -738,13 +742,20 @@ app.get('/api/fundamentals', async (req, res) => {
         const forceRefresh = req.query.refresh === '1' || req.query.refresh === 'true';
 
         if (!forceRefresh) {
-            // 1) In-memory cache
+            // 1) In-memory cache (fastest)
             const cached = apiCache.get('fundamentals');
             if (cached) {
                 console.log('  Returning cached fundamentals');
                 return res.json(cached);
             }
-            // 2) On-disk JSON database
+            // 2) PostgreSQL snapshot within its freshness window
+            const snap = await db.getFreshSnapshot('fundamentals');
+            if (snap) {
+                apiCache.set('fundamentals', snap);
+                console.log('  Returning fundamentals from PostgreSQL snapshot');
+                return res.json(snap);
+            }
+            // 3) On-disk JSON database (local fallback)
             try {
                 const disk = await fs.readFile(FUNDAMENTALS_DB, 'utf-8');
                 const parsed = JSON.parse(disk);
@@ -766,6 +777,46 @@ app.get('/api/fundamentals', async (req, res) => {
             message: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
         });
     }
+});
+
+/**
+ * Save a filter run to the history log for later analysis.
+ * Body: { label?, criteria?, results: [...] }
+ * Auto-deleted after the retention window (default 90 days).
+ */
+app.post('/api/filter-runs', async (req, res) => {
+    if (!db.isReady()) {
+        return res.status(503).json({ error: 'History database not configured' });
+    }
+    try {
+        const { label, criteria, results } = req.body || {};
+        if (!Array.isArray(results)) {
+            return res.status(400).json({ error: 'results array is required' });
+        }
+        const row = await db.saveFilterRun({ label, criteria, results });
+        res.json({ saved: true, id: row?.id ?? null, createdAt: row?.created_at ?? null });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to save filter run', message: err.message });
+    }
+});
+
+/**
+ * List recent filter-run history (metadata only, newest first).
+ */
+app.get('/api/filter-runs', async (req, res) => {
+    if (!db.isReady()) return res.json({ runs: [], dbEnabled: false });
+    const runs = await db.listFilterRuns(req.query.limit);
+    res.json({ runs, dbEnabled: true, retentionDays: db.HISTORY_RETENTION_DAYS });
+});
+
+/**
+ * Fetch a single stored filter run (including its full results).
+ */
+app.get('/api/filter-runs/:id', async (req, res) => {
+    if (!db.isReady()) return res.status(503).json({ error: 'History database not configured' });
+    const run = await db.getFilterRun(req.params.id);
+    if (!run) return res.status(404).json({ error: 'Filter run not found' });
+    res.json(run);
 });
 
 /**
@@ -803,12 +854,13 @@ module.exports = app;
 if (require.main === module) {
     const PORT = process.env.PORT || 3000;
     
-    // Load Russell extra tickers before starting server
-    loadRussellExtra().then(() => {
+    // Load Russell extras and initialise the database before starting server
+    Promise.all([loadRussellExtra(), db.initDb()]).then(([, dbOk]) => {
         app.listen(PORT, () => {
             console.log(`\n🚀 Apex Core Engine running on port ${PORT}`);
             console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
             console.log(`   FMP API Key: ${FMP_KEY ? '✓ Set' : '✗ Not set'}`);
+            console.log(`   Database: ${dbOk ? '✓ PostgreSQL' : 'JSON fallback'}`);
             console.log(`   Rate Limiting: ✓ Enabled (30 req/min)\n`);
         });
     });
