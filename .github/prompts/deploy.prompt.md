@@ -1,8 +1,9 @@
 ---
 description: "Deploy fa_ai to Railway with a pre-flight checklist"
 argument-hint: "Optional: environment or notes"
+agent: Mr_Shafiq
 ---
-Walk through deploying this project to Railway. Use the `use-railway` skill for the actual Railway operations.
+Walk through deploying this project to Railway. Delegate the work to the **Mr_Shafiq** agent so the deploy goes through its plan-then-approve gate. Use the `use-railway` skill for the actual Railway operations.
 
 ## Pre-flight checklist (verify before deploying)
 1. **Working tree clean**: run `git status`; confirm changes are committed (or intentionally staged).
