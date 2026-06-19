@@ -1,33 +1,45 @@
-# fa_ai — Project Conventions
+# fa_ai Agent Guide
 
-Financial-data screener API. Node.js + Express backend that pulls fundamentals from the
-Financial Modeling Prep (FMP) API, caches them in memory and (optionally) PostgreSQL, and
-serves a static frontend from `public/`.
+Minimal instructions for AI coding agents working in this repository.
 
-## Stack
-- **Runtime**: Node.js >= 18, CommonJS (`require`, not ESM `import`).
-- **Server**: Express 5 (`server.js`) — single entry point, `npm start`.
-- **Data source**: FMP "stable" API at `https://financialmodelingprep.com/stable`.
-- **Persistence**: PostgreSQL via `pg` (`db.js`); falls back to in-memory + JSON when `DATABASE_URL` is unset.
-- **Deploy**: Railway (`railway.json`), NIXPACKS builder, healthcheck at `/health`.
+## Workspace scope
+- Canonical project root is this folder: `/workspaces/fa_ai`.
+- Treat the nested mirror folder `fa_ai/` as non-canonical and potentially stale.
+- Prefer editing root-level files only unless the user explicitly requests otherwise.
 
-## Key files
-- `server.js` — all routes, middleware, FMP client, in-memory cache, rate limiting, CORS.
-- `db.js` — Postgres pool, schema bootstrap, snapshot cache + filter-run history. Every export is a no-op when the DB is disabled.
-- `russell-extra.json` — extra tickers loaded at startup (`{ "tickers": [...] }`).
-- `data/fundamentals.json` — JSON fallback store.
-- `public/index.html` — static frontend.
+## Fast start
+- Install: `npm install`
+- Run: `npm start` (starts `node server.js`)
+- Test: `npm test` (placeholder script)
 
-## Conventions to follow
-- **Config via env vars**: `FMP_API_KEY`, `DATABASE_URL`, `ALLOWED_ORIGINS`, `SNAPSHOT_TTL_DAYS`, `HISTORY_RETENTION_DAYS`, `PORT`. Read with `process.env` and provide sane defaults. Never hardcode secrets.
-- **FMP access goes through `fmpGet(endpoint)`** — it injects the API key and handles errors. Don't build FMP URLs by hand elsewhere.
-- **Cache before fetch**: check `apiCache` (in-memory, `CACHE_TTL`) and/or `getFreshSnapshot()` before calling FMP to conserve API quota.
-- **DB code must stay optional**: guard new `db.js` functions with the `ready` flag and degrade gracefully (warn, don't throw) so the app runs without Postgres.
-- **Routes are GET-only** under `/api/`, subject to rate limiting (`RATE_LIMIT_MAX`/min) and CORS allowlist. `/health` is exempt.
-- **SQL**: parameterized queries only (`$1, $2 ...`). Never interpolate user input into SQL.
-- **Style**: 4-space indentation, JSDoc comments on functions, section banners (`── SECTION`) like the existing code.
-- **Logging**: concise `console.log`/`console.warn` with the existing `✓ / ⚠ / ℹ` prefixes.
+## Architecture map
+- `server.js`: Express entry point, `/api/*` routes, FMP client helper, in-memory cache, CORS, rate limit.
+- `db.js`: optional PostgreSQL persistence layer (must gracefully degrade when DB is unavailable).
+- `public/index.html`: static frontend served by Express.
+- `data/fundamentals.json`: JSON fallback store when DB is not used.
+- `railway.json`: Railway deploy config, NIXPACKS builder, `/health` healthcheck.
 
-## Commands
-- `npm start` — run the server.
-- `npm test` — placeholder (currently always passes).
+## Non-negotiable conventions
+- JavaScript is CommonJS on Node >= 18 (`require` / `module.exports`).
+- Read configuration from `process.env` with safe defaults; never hardcode secrets.
+- Required env names in this codebase: `FMP_API_KEY`, `DATABASE_URL`, `ALLOWED_ORIGINS`, `SNAPSHOT_TTL_DAYS`, `HISTORY_RETENTION_DAYS`, `PORT`.
+- Access Financial Modeling Prep only through `fmpGet(endpoint)`.
+- Check cache before upstream fetch (`apiCache` and/or DB snapshot helpers).
+- Keep DB optional: guard operations with readiness checks and warn instead of throwing when unavailable.
+- Use parameterized SQL only (`$1`, `$2`, ...).
+- Keep `/api/*` behavior aligned with existing GET-oriented, rate-limited, CORS-checked pattern; keep `/health` lightweight.
+
+## Style and editing rules
+- Follow `.github/instructions/node-style.instructions.md` for any `*.js` edits.
+- Preserve 4-space indentation, existing section-banner style, and concise logging style.
+- Avoid broad refactors unless explicitly requested.
+
+## Reference docs
+- Setup and deployment details: `docs/setup.md`
+- Project docs home: `docs/index.md`
+
+## Typical change workflow for agents
+1. Read `server.js` and `db.js` sections related to the target change.
+2. Implement smallest safe change in root-level files.
+3. Run `npm test` (and any targeted checks if added).
+4. Summarize behavior impact and env/config implications.

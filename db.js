@@ -69,6 +69,13 @@ async function initDb() {
             );
             CREATE INDEX IF NOT EXISTS idx_filter_runs_created
                 ON filter_runs (created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS watchlist (
+                id          BIGSERIAL PRIMARY KEY,
+                symbol      TEXT NOT NULL UNIQUE,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+            CREATE INDEX IF NOT EXISTS idx_watchlist_created ON watchlist (created_at DESC);
         `);
         ready = true;
         console.log(`✓ PostgreSQL connected — snapshot TTL ${SNAPSHOT_TTL_DAYS}d, history retention ${HISTORY_RETENTION_DAYS}d`);
@@ -184,6 +191,48 @@ async function getFilterRun(id) {
 }
 
 /**
+ * Global watchlist helpers
+ */
+async function listWatchlist() {
+    if (!ready || !pool) return [];
+    const { rows } = await pool.query(`
+        SELECT symbol, created_at
+        FROM watchlist
+        ORDER BY created_at DESC
+    `);
+    return rows;
+}
+
+async function addToWatchlist(symbol) {
+    if (!ready || !pool) return null;
+    const normalized = String(symbol || '').trim().toUpperCase();
+    if (!normalized) throw new Error('symbol is required');
+
+    const { rows } = await pool.query(`
+        INSERT INTO watchlist (symbol)
+        VALUES ($1)
+        ON CONFLICT (symbol) DO NOTHING
+        RETURNING symbol, created_at
+    `, [normalized]);
+
+    if (rows[0]) return rows[0];
+
+    const existing = await pool.query(
+        `SELECT symbol, created_at FROM watchlist WHERE symbol = $1`,
+        [normalized]
+    );
+    return existing.rows[0] || null;
+}
+
+async function removeFromWatchlist(symbol) {
+    if (!ready || !pool) return false;
+    const normalized = String(symbol || '').trim().toUpperCase();
+    if (!normalized) return false;
+    const { rowCount } = await pool.query(`DELETE FROM watchlist WHERE symbol = $1`, [normalized]);
+    return rowCount > 0;
+}
+
+/**
  * Delete expired snapshots and filter runs older than the retention window.
  */
 async function cleanup() {
@@ -211,6 +260,9 @@ module.exports = {
     saveFilterRun,
     listFilterRuns,
     getFilterRun,
+    listWatchlist,
+    addToWatchlist,
+    removeFromWatchlist,
     cleanup,
     SNAPSHOT_TTL_DAYS,
     HISTORY_RETENTION_DAYS,
