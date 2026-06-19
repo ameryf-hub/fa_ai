@@ -858,6 +858,50 @@ app.get('/api/filter-runs/:id', async (req, res) => {
 });
 
 /**
+ * Global watchlist endpoints (Railway PostgreSQL backed)
+ */
+app.get('/api/watchlist', async (req, res) => {
+    try {
+        if (!db.isReady()) {
+            return res.json({ items: [], dbEnabled: false });
+        }
+        const items = await db.listWatchlist();
+        return res.json({ items, dbEnabled: true });
+    } catch (err) {
+        return res.status(500).json({ error: 'Failed to load watchlist', message: err.message });
+    }
+});
+
+app.post('/api/watchlist', async (req, res) => {
+    try {
+        if (!db.isReady()) {
+            return res.status(503).json({ error: 'Database not configured' });
+        }
+        const symbol = String(req.body?.symbol || '').trim().toUpperCase();
+        if (!symbol) {
+            return res.status(400).json({ error: 'symbol is required' });
+        }
+        const item = await db.addToWatchlist(symbol);
+        return res.json({ saved: true, item });
+    } catch (err) {
+        return res.status(500).json({ error: 'Failed to add symbol', message: err.message });
+    }
+});
+
+app.delete('/api/watchlist/:symbol', async (req, res) => {
+    try {
+        if (!db.isReady()) {
+            return res.status(503).json({ error: 'Database not configured' });
+        }
+        const symbol = String(req.params.symbol || '').trim().toUpperCase();
+        const removed = await db.removeFromWatchlist(symbol);
+        return res.json({ removed, symbol });
+    } catch (err) {
+        return res.status(500).json({ error: 'Failed to remove symbol', message: err.message });
+    }
+});
+
+/**
  * Endpoint to get approximate universe size for progress indication
  */
 app.get('/api/universe-size', (req, res) => {

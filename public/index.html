@@ -455,6 +455,58 @@
     margin-top:12px; display:none; text-align:center;
     border:1px solid rgba(255,56,96,0.3); padding:6px;
   }
+
+  /* ── TOP MENU / WATCHLIST ── */
+  .top-menu-wrap { position:relative; margin:10px 0 14px; display:flex; align-items:center; gap:10px; }
+  .menu-btn {
+    width:40px; height:34px; border:1px solid var(--border2); background:var(--panel); cursor:pointer;
+    display:flex; flex-direction:column; justify-content:center; align-items:center; gap:4px;
+  }
+  .menu-btn span { width:18px; height:2px; background:var(--accent); display:block; }
+  .menu-btn:hover { border-color:var(--accent); box-shadow:var(--glow); }
+  .menu-dropdown {
+    position:absolute; top:40px; left:0; min-width:200px; z-index:1200;
+    background:var(--panel); border:1px solid var(--border2); display:none;
+  }
+  .menu-dropdown.open { display:block; }
+  .menu-item {
+    padding:10px 12px; font-size:10px; letter-spacing:0.14em; text-transform:uppercase;
+    color:var(--text); cursor:pointer; border-bottom:1px solid var(--border);
+  }
+  .menu-item:last-child { border-bottom:none; }
+  .menu-item:hover { background:rgba(0,229,255,0.08); color:var(--accent); }
+
+  .watchlist-section {
+    margin:0 0 18px; background:var(--panel); border:1px solid var(--border2); border-left:3px solid var(--accent);
+    padding:14px;
+  }
+  .watchlist-head { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  .watchlist-title { font-size:10px; letter-spacing:0.22em; color:var(--accent); text-transform:uppercase; }
+  .watchlist-form { display:flex; gap:8px; flex-wrap:wrap; }
+  .watchlist-input {
+    background:var(--bg); border:1px solid var(--border2); color:var(--text);
+    font-family:'IBM Plex Mono',monospace; font-size:11px; padding:7px 10px; width:150px;
+  }
+  .watchlist-input:focus { border-color:var(--accent); outline:none; }
+  .watchlist-items { display:flex; flex-wrap:wrap; gap:8px; }
+  .watch-chip {
+    display:inline-flex; align-items:center; gap:8px;
+    border:1px solid var(--border2); background:rgba(0,229,255,0.03); padding:6px 8px; font-size:10px;
+  }
+  .watch-chip .sym { color:var(--accent); font-weight:600; letter-spacing:0.08em; }
+  .watch-chip .remove {
+    border:none; background:none; color:var(--red); cursor:pointer; font-size:12px; line-height:1;
+  }
+  .watch-empty { font-size:10px; color:var(--text2); }
+
+  .watch-btn {
+    border:1px solid var(--border2);
+    background:rgba(0,229,255,0.03);
+    color:var(--accent);
+    padding:3px 7px;
+    cursor:pointer;
+    font-size:9px;
+  }
 </style>
 </head>
 <body>
@@ -491,6 +543,26 @@
       <div class="hstat"><div class="val" id="stat-time" style="font-size:11px;color:var(--accent)">—</div><div class="lbl">Last Update</div></div>
     </div>
   </header>
+
+  <div class="top-menu-wrap">
+    <button class="menu-btn" id="main-menu-btn" onclick="toggleMainMenu()" aria-label="Main menu">
+      <span></span><span></span><span></span>
+    </button>
+    <div class="menu-dropdown" id="main-menu-dropdown">
+      <div class="menu-item" onclick="openMyWatchlist()">My Watchlist</div>
+    </div>
+  </div>
+
+  <div class="watchlist-section" id="watchlist-section" style="display:none;">
+    <div class="watchlist-head">
+      <div class="watchlist-title">My Watchlist (Global)</div>
+      <form class="watchlist-form" onsubmit="addWatchlistSymbol(event)">
+        <input class="watchlist-input" id="watchlist-input" type="text" placeholder="e.g. AAPL" maxlength="12" />
+        <button class="btn-sm" type="submit">Add</button>
+      </form>
+    </div>
+    <div class="watchlist-items" id="watchlist-items"></div>
+  </div>
 
   <!-- API STATUS -->
   <div class="api-status-bar">
@@ -617,7 +689,7 @@
   <div class="grid-header">
     <div>Ticker</div><div>Price</div><div>Chg %</div><div>Rev Growth</div>
     <div>Vol Surge</div><div>52W High %</div><div>Beta</div>
-    <div>Score</div><div>P/E</div><div>Signal</div><div>Sector</div>
+    <div>Score</div><div>P/E</div><div>Signal</div><div>Sector / Watch</div>
   </div>
   <div class="stock-list" id="stock-list">
     <div class="msg-box">⟳ Loading from FMP /stable/ API…</div>
@@ -946,6 +1018,7 @@ function doLogin() {
 window.addEventListener('load', () => {
   document.getElementById('login-user').focus();
   updateCriteriaButtonIndicator();
+  loadWatchlist();
   updateCriteriaPills();
 });
 
@@ -960,6 +1033,7 @@ function getBackendURL() {
 
 let STOCKS = [];
 let openTicker = null;
+let WATCHLIST = [];
 
 // ── CRITERIA THRESHOLDS ──
 // Default ranges — a filter is only "active" when the user deviates from these.
@@ -1004,6 +1078,102 @@ function isCriteriaActive(key) {
 // Returns true if ANY criteria is active (used for the button indicator dot).
 function hasAnyCriteriaActive() {
   return Object.keys(CRITERIA_DEFAULTS).some(isCriteriaActive);
+}
+
+function sanitizeSymbol(raw) {
+  return String(raw || '').trim().toUpperCase().replace(/[^A-Z0-9.\-]/g, '');
+}
+
+function toggleMainMenu() {
+  const dd = document.getElementById('main-menu-dropdown');
+  if (dd) dd.classList.toggle('open');
+}
+
+function openMyWatchlist() {
+  const sec = document.getElementById('watchlist-section');
+  const dd = document.getElementById('main-menu-dropdown');
+  if (dd) dd.classList.remove('open');
+  if (sec) {
+    sec.style.display = 'block';
+    sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  loadWatchlist();
+}
+
+document.addEventListener('click', (e) => {
+  const btn = document.getElementById('main-menu-btn');
+  const dd = document.getElementById('main-menu-dropdown');
+  if (!btn || !dd) return;
+  if (!btn.contains(e.target) && !dd.contains(e.target)) dd.classList.remove('open');
+});
+
+async function loadWatchlist() {
+  try {
+    const base = getBackendURL();
+    const res = await fetch(`${base}/api/watchlist`);
+    const data = await res.json();
+    WATCHLIST = Array.isArray(data.items) ? data.items : [];
+    renderWatchlist();
+  } catch (e) {
+    renderWatchlist('Failed to load watchlist.');
+  }
+}
+
+function renderWatchlist(errMsg) {
+  const wrap = document.getElementById('watchlist-items');
+  if (!wrap) return;
+
+  if (errMsg) {
+    wrap.innerHTML = `<div class="watch-empty">${errMsg}</div>`;
+    return;
+  }
+
+  if (!WATCHLIST.length) {
+    wrap.innerHTML = '<div class="watch-empty">No symbols yet. Add your first stock.</div>';
+    return;
+  }
+
+  wrap.innerHTML = WATCHLIST.map((w) => {
+    const sym = w.symbol || '';
+    return `<div class="watch-chip">
+      <span class="sym">${sym}</span>
+      <button class="remove" onclick="removeWatchlistSymbol('${sym}')">×</button>
+    </div>`;
+  }).join('');
+}
+
+async function addWatchlistSymbol(event) {
+  event.preventDefault();
+  const input = document.getElementById('watchlist-input');
+  const symbol = sanitizeSymbol(input?.value);
+  if (!symbol) return;
+
+  try {
+    const base = getBackendURL();
+    const res = await fetch(`${base}/api/watchlist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ symbol })
+    });
+    if (!res.ok) throw new Error('add failed');
+    input.value = '';
+    await loadWatchlist();
+  } catch (e) {
+    alert('Failed to add symbol to watchlist.');
+  }
+}
+
+async function removeWatchlistSymbol(symbol) {
+  try {
+    const base = getBackendURL();
+    const res = await fetch(`${base}/api/watchlist/${encodeURIComponent(symbol)}`, {
+      method: 'DELETE'
+    });
+    if (!res.ok) throw new Error('remove failed');
+    await loadWatchlist();
+  } catch (e) {
+    alert('Failed to remove symbol from watchlist.');
+  }
 }
 
 // Friendly labels for the modal title when scoped to a single criteria.
