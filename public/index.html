@@ -167,6 +167,10 @@
   .col { font-size:11px; }
   .col-ticker { font-weight:600; font-size:13px; color:var(--text); }
   .col-ticker .exch { font-size:8px; color:var(--muted); display:block; letter-spacing:0.15em; margin-top:1px; }
+  .col-ticker .ticker-link { color:var(--accent); text-decoration:none; cursor:pointer; }
+  .col-ticker .ticker-link:hover { color:var(--green); }
+  .col-ticker .company-link { display:block; margin-top:3px; font-size:9px; color:var(--text2); font-family:'IBM Plex Sans',sans-serif; line-height:1.3; text-decoration:none; cursor:pointer; }
+  .col-ticker .company-link:hover { color:var(--text); }
   .vol-cell { display:flex; flex-direction:column; gap:2px; }
   .vol-ratio { font-size:11px; font-weight:600; }
   .vol-ratio.spike { color:var(--green); }
@@ -195,6 +199,11 @@
 
   .detail-panel { background:var(--panel); border:1px solid var(--border2); border-top:2px solid var(--accent); padding:22px; margin-top:12px; display:none; }
   .detail-panel.open { display:block; }
+  .chart-panel { margin-bottom:16px; border:1px solid var(--border2); background:linear-gradient(180deg, rgba(0,229,255,0.04), rgba(13,17,23,0.88)); padding:14px; }
+  .chart-panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+  .chart-panel-label { font-size:9px; letter-spacing:0.3em; color:var(--accent); text-transform:uppercase; }
+  .chart-panel-sub { font-size:9px; color:var(--text2); letter-spacing:0.08em; text-transform:uppercase; }
+  .chart-frame { width:100%; height:420px; border:0; display:block; background:var(--bg); }
   .detail-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:16px; margin-bottom:18px; }
   .detail-metric { border-left:2px solid var(--border2); padding-left:10px; }
   .detail-metric .dm-label { font-size:8px; letter-spacing:0.3em; color:var(--text2); text-transform:uppercase; margin-bottom:4px; }
@@ -1323,6 +1332,27 @@ function sparkBars(s) {
   }).join('');
 }
 
+function stockChartEmbedUrl(s) {
+  const exchange = (s.exchange || '').toUpperCase().replace(/\s+/g, '');
+  const chartableExchanges = new Set(['NASDAQ', 'NYSE', 'AMEX', 'NYSEARCA', 'NYSEMKT', 'OTC']);
+  const symbol = chartableExchanges.has(exchange) ? `${exchange}:${s.ticker}` : s.ticker;
+  const params = new URLSearchParams({
+    symbol,
+    interval: 'D',
+    hide_side_toolbar: '1',
+    allow_symbol_change: '1',
+    save_image: '0',
+    theme: 'dark',
+    style: '1',
+    locale: 'en'
+  });
+  return `https://s.tradingview.com/widgetembed/?${params.toString()}`;
+}
+
+function showStockChart(ticker) {
+  toggleDetail(ticker);
+}
+
 function renderRow(s) {
   const sig = getSignal(s);
   const ac = sig==='BREAKOUT'?'alert-high':sig==='WATCH'?'alert-mid':sig==='BUILDING'?'alert-low':'';
@@ -1337,7 +1367,11 @@ function renderRow(s) {
   const h52Col = s.pct52H>=90?'var(--green)':s.pct52H>=75?'var(--yellow)':'var(--text2)';
   return `
   <div class="stock-row ${ac}" onclick="toggleDetail('${s.ticker}')">
-    <div class="col col-ticker">${s.ticker}<span class="exch">${s.exchange} · ${s.index}</span></div>
+    <div class="col col-ticker">
+      <a class="ticker-link" href="#" onclick="event.stopPropagation(); showStockChart('${s.ticker}'); return false;">${s.ticker}</a>
+      <span class="exch">${s.exchange} · ${s.index}</span>
+      <a class="company-link" href="#" onclick="event.stopPropagation(); showStockChart('${s.ticker}'); return false;">${s.companyName||s.ticker}</a>
+    </div>
     <div class="col">$${s.price.toFixed(2)}</div>
     <div class="col" style="color:${chgCol};font-weight:600">${chgStr}</div>
     <div class="col" style="color:${revCol}">${s.revGrowth!=null?(s.revGrowth>0?'+':'')+s.revGrowth+'%':'—'}</div>
@@ -1370,6 +1404,7 @@ function renderDetail(s) {
   const vStepCls = vr>=3?'active':vr>=2?'building':'';
   const vrRatioCls = vr>=3?'high':vr>=2?'med':'low';
   const vrDesc = vr>=3?'✓ INSTITUTIONAL SPIKE':vr>=2?'⟳ ELEVATED':'— Normal';
+  const chartUrl = stockChartEmbedUrl(s);
   return `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
       <div>
@@ -1379,6 +1414,13 @@ function renderDetail(s) {
       <div class="signal-badge ${sig}" style="font-size:11px;padding:6px 14px">
         <div class="signal-dot"></div>${sig} — SCORE ${s.score}/100
       </div>
+    </div>
+    <div class="chart-panel">
+      <div class="chart-panel-head">
+        <div class="chart-panel-label">Live Chart</div>
+        <div class="chart-panel-sub">${s.exchange || 'UNKNOWN'} · ${s.ticker}</div>
+      </div>
+      <iframe class="chart-frame" src="${chartUrl}" title="${s.ticker} chart" loading="lazy" referrerpolicy="no-referrer" allow="fullscreen"></iframe>
     </div>
     <div class="detail-grid">
       <div class="detail-metric"><div class="dm-label">Price</div><div class="dm-val">$${s.price.toFixed(2)}</div><div class="dm-sub">${s.change>=0?'+':''}${s.change.toFixed(2)}% today</div></div>
