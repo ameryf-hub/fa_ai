@@ -942,6 +942,7 @@ function doLogin() {
 
 // Focus username on load
 window.addEventListener('load', () => {
+  primeBackendInput();
   document.getElementById('login-user').focus();
   updateCriteriaButtonIndicator();
   loadWatchlist();
@@ -951,10 +952,32 @@ window.addEventListener('load', () => {
 
 // ── APP ──
 // ── Backend endpoint (update if you host the server elsewhere) ───────────────
-// Backend URL — reads from the input so users can point to a remote server
+const DEFAULT_RAILWAY_BACKEND = 'https://faai.up.railway.app';
+
+function normalizeBackendURL(url) {
+  return String(url || '').trim().replace(/\/$/, '');
+}
+
+function isLocalHost() {
+  const host = (window.location.hostname || '').toLowerCase();
+  return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+}
+
+// Backend URL — manual input wins; otherwise local runs default to Railway.
 function getBackendURL() {
   const input = document.getElementById('api-key-input');
-  return (input ? input.value.trim() : '') || window.location.origin;
+  const manual = normalizeBackendURL(input ? input.value : '');
+  if (manual) return manual;
+  if (isLocalHost()) return DEFAULT_RAILWAY_BACKEND;
+  return normalizeBackendURL(window.location.origin);
+}
+
+function primeBackendInput() {
+  const input = document.getElementById('api-key-input');
+  if (!input) return;
+  if (!input.value.trim() && isLocalHost()) {
+    input.value = DEFAULT_RAILWAY_BACKEND;
+  }
 }
 
 let STOCKS = [];
