@@ -167,6 +167,10 @@
   .col { font-size:11px; }
   .col-ticker { font-weight:600; font-size:13px; color:var(--text); }
   .col-ticker .exch { font-size:8px; color:var(--muted); display:block; letter-spacing:0.15em; margin-top:1px; }
+  .col-ticker .ticker-link { color:var(--accent); text-decoration:none; cursor:pointer; }
+  .col-ticker .ticker-link:hover { color:var(--green); }
+  .col-ticker .company-link { display:block; margin-top:3px; font-size:9px; color:var(--text2); font-family:'IBM Plex Sans',sans-serif; line-height:1.3; text-decoration:none; cursor:pointer; }
+  .col-ticker .company-link:hover { color:var(--text); }
   .vol-cell { display:flex; flex-direction:column; gap:2px; }
   .vol-ratio { font-size:11px; font-weight:600; }
   .vol-ratio.spike { color:var(--green); }
@@ -195,6 +199,11 @@
 
   .detail-panel { background:var(--panel); border:1px solid var(--border2); border-top:2px solid var(--accent); padding:22px; margin-top:12px; display:none; }
   .detail-panel.open { display:block; }
+  .chart-panel { margin-bottom:16px; border:1px solid var(--border2); background:linear-gradient(180deg, rgba(0,229,255,0.04), rgba(13,17,23,0.88)); padding:14px; }
+  .chart-panel-head { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; margin-bottom:10px; }
+  .chart-panel-label { font-size:9px; letter-spacing:0.3em; color:var(--accent); text-transform:uppercase; }
+  .chart-panel-sub { font-size:9px; color:var(--text2); letter-spacing:0.08em; text-transform:uppercase; }
+  .chart-frame { width:100%; height:420px; border:0; display:block; background:var(--bg); }
   .detail-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:16px; margin-bottom:18px; }
   .detail-metric { border-left:2px solid var(--border2); padding-left:10px; }
   .detail-metric .dm-label { font-size:8px; letter-spacing:0.3em; color:var(--text2); text-transform:uppercase; margin-bottom:4px; }
@@ -347,6 +356,9 @@
   table.ex-table { width:100%; border-collapse:collapse; font-family:'IBM Plex Mono',monospace; font-size:10px; }
   table.ex-table thead th { position:sticky; top:0; background:var(--bg); color:var(--accent2); text-transform:uppercase; letter-spacing:0.1em; font-size:9px; font-weight:600; padding:10px 12px; text-align:right; white-space:nowrap; border-bottom:1px solid var(--border2); z-index:2; }
   table.ex-table thead th.left { text-align:left; }
+  table.ex-table thead th.sortable { cursor:pointer; user-select:none; }
+  table.ex-table thead th.sortable:hover { color:#ff8f66; background:rgba(255,107,53,0.06); }
+  table.ex-table thead th.sorted { color:#ff8f66; }
   table.ex-table tbody td { padding:8px 12px; text-align:right; white-space:nowrap; border-bottom:1px solid var(--border); color:var(--text); }
   table.ex-table tbody td.left { text-align:left; }
   table.ex-table tbody tr:hover { background:rgba(255,107,53,0.05); }
@@ -534,7 +546,7 @@
   <header>
     <div class="logo-block">
       <h1>APEX BREAKOUT</h1>
-      <div class="tagline">Institutional Volume Surge Screener · NDX + SP500 + Russell 1000 · Powered by Financial Modeling Prep /stable/ API</div>
+      <div class="tagline">Institutional Volume Surge Screener · NDX + SP500 + Russell 1000</div>
     </div>
     <div class="header-stats">
       <div class="hstat"><div class="val" id="stat-alerts">—</div><div class="lbl">Breakouts</div></div>
@@ -1409,6 +1421,27 @@ function sparkBars(s) {
   }).join('');
 }
 
+function stockChartEmbedUrl(s) {
+  const exchange = (s.exchange || '').toUpperCase().replace(/\s+/g, '');
+  const chartableExchanges = new Set(['NASDAQ', 'NYSE', 'AMEX', 'NYSEARCA', 'NYSEMKT', 'OTC']);
+  const symbol = chartableExchanges.has(exchange) ? `${exchange}:${s.ticker}` : s.ticker;
+  const params = new URLSearchParams({
+    symbol,
+    interval: 'D',
+    hide_side_toolbar: '1',
+    allow_symbol_change: '1',
+    save_image: '0',
+    theme: 'dark',
+    style: '1',
+    locale: 'en'
+  });
+  return `https://s.tradingview.com/widgetembed/?${params.toString()}`;
+}
+
+function showStockChart(ticker) {
+  toggleDetail(ticker);
+}
+
 function renderRow(s) {
   const sig = getSignal(s);
   const ac = sig==='BREAKOUT'?'alert-high':sig==='WATCH'?'alert-mid':sig==='BUILDING'?'alert-low':'';
@@ -1423,7 +1456,11 @@ function renderRow(s) {
   const h52Col = s.pct52H>=90?'var(--green)':s.pct52H>=75?'var(--yellow)':'var(--text2)';
   return `
   <div class="stock-row ${ac}" onclick="toggleDetail('${s.ticker}')">
-    <div class="col col-ticker">${s.ticker}<span class="exch">${s.exchange} · ${s.index}</span></div>
+    <div class="col col-ticker">
+      <a class="ticker-link" href="#" onclick="event.stopPropagation(); showStockChart('${s.ticker}'); return false;">${s.ticker}</a>
+      <span class="exch">${s.exchange} · ${s.index}</span>
+      <a class="company-link" href="#" onclick="event.stopPropagation(); showStockChart('${s.ticker}'); return false;">${s.companyName||s.ticker}</a>
+    </div>
     <div class="col">$${s.price.toFixed(2)}</div>
     <div class="col" style="color:${chgCol};font-weight:600">${chgStr}</div>
     <div class="col" style="color:${revCol}">${s.revGrowth!=null?(s.revGrowth>0?'+':'')+s.revGrowth+'%':'—'}</div>
@@ -1456,6 +1493,7 @@ function renderDetail(s) {
   const vStepCls = vr>=3?'active':vr>=2?'building':'';
   const vrRatioCls = vr>=3?'high':vr>=2?'med':'low';
   const vrDesc = vr>=3?'✓ INSTITUTIONAL SPIKE':vr>=2?'⟳ ELEVATED':'— Normal';
+  const chartUrl = stockChartEmbedUrl(s);
   return `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
       <div>
@@ -1465,6 +1503,13 @@ function renderDetail(s) {
       <div class="signal-badge ${sig}" style="font-size:11px;padding:6px 14px">
         <div class="signal-dot"></div>${sig} — SCORE ${s.score}/100
       </div>
+    </div>
+    <div class="chart-panel">
+      <div class="chart-panel-head">
+        <div class="chart-panel-label">Live Chart</div>
+        <div class="chart-panel-sub">${s.exchange || 'UNKNOWN'} · ${s.ticker}</div>
+      </div>
+      <iframe class="chart-frame" src="${chartUrl}" title="${s.ticker} chart" loading="lazy" referrerpolicy="no-referrer" allow="fullscreen"></iframe>
     </div>
     <div class="detail-grid">
       <div class="detail-metric"><div class="dm-label">Price</div><div class="dm-val">$${s.price.toFixed(2)}</div><div class="dm-sub">${s.change>=0?'+':''}${s.change.toFixed(2)}% today</div></div>
@@ -1612,12 +1657,13 @@ function reconnect() {
 // ════════════════════════════════════════════════════════════════════════════
 let FUNDAMENTALS = [];
 let explorerView = 'mktCap';
+let explorerSortState = { key: 'mktCap', dir: 'desc' };
 
 const EXPLORER_VIEWS = {
-  mktCap:    { title: 'Market Capitalization — Ranked (Desc)', sort: (a,b)=>(b.mktCap||0)-(a.mktCap||0) },
-  revGrowth: { title: 'Revenue Growth — Trailing & Forward',   sort: (a,b)=>(b.revGrowth??-999)-(a.revGrowth??-999) },
-  pe:        { title: 'P/E & Forward P/E',                     sort: (a,b)=>(a.pe??1e9)-(b.pe??1e9) },
-  all:       { title: 'Full Analysis Table — All Metrics',     sort: (a,b)=>(b.mktCap||0)-(a.mktCap||0) },
+  mktCap:    { title: 'Market Capitalization — Ranked (Desc)', defaultSort: { key: 'mktCap', dir: 'desc' } },
+  revGrowth: { title: 'Revenue Growth — Trailing & Forward',   defaultSort: { key: 'revGrowth', dir: 'desc' } },
+  pe:        { title: 'P/E & Forward P/E',                     defaultSort: { key: 'pe', dir: 'asc' } },
+  all:       { title: 'Full Analysis Table — All Metrics',     defaultSort: { key: 'mktCap', dir: 'desc' } },
 };
 
 function fmtNum(v, d=2) { return v==null ? '—' : Number(v).toFixed(d); }
@@ -1625,8 +1671,118 @@ function fmtPct(v) { return v==null ? '—' : (v>0?'+':'')+Number(v).toFixed(1)+
 function pctClass(v) { return v==null ? '' : v>=0 ? 'pos' : 'neg'; }
 function scoreClass(v) { return v==null ? 'sc-lo' : v>=70 ? 'sc-hi' : v>=45 ? 'sc-mid' : 'sc-lo'; }
 
+function resetExplorerSort(view) {
+  const cfg = EXPLORER_VIEWS[view] || EXPLORER_VIEWS.mktCap;
+  explorerSortState = {
+    key: cfg.defaultSort.key,
+    dir: cfg.defaultSort.dir,
+  };
+}
+
+function getExplorerColumns(view) {
+  if (view === 'mktCap') {
+    return [
+      { label: '#', key: '__rank', left: true, sortable: false },
+      { label: 'Ticker', key: 'ticker', left: true, type: 'string', defaultDir: 'asc' },
+      { label: 'Company', key: 'companyName', left: true, type: 'string', defaultDir: 'asc' },
+      { label: 'Sector', key: 'sector', left: true, type: 'string', defaultDir: 'asc' },
+      { label: 'Price', key: 'price', type: 'number', defaultDir: 'desc' },
+      { label: 'Market Cap', key: 'mktCap', type: 'number', defaultDir: 'desc' },
+    ];
+  }
+
+  if (view === 'revGrowth') {
+    return [
+      { label: '#', key: '__rank', left: true, sortable: false },
+      { label: 'Ticker', key: 'ticker', left: true, type: 'string', defaultDir: 'asc' },
+      { label: 'Company', key: 'companyName', left: true, type: 'string', defaultDir: 'asc' },
+      { label: 'Rev Growth (TTM)', key: 'revGrowth', type: 'number', defaultDir: 'desc' },
+      { label: 'Fwd Rev Growth', key: 'fwdRevGrowth', type: 'number', defaultDir: 'desc' },
+      { label: 'Growth Score', key: 'growthScore', type: 'number', defaultDir: 'desc' },
+    ];
+  }
+
+  if (view === 'pe') {
+    return [
+      { label: '#', key: '__rank', left: true, sortable: false },
+      { label: 'Ticker', key: 'ticker', left: true, type: 'string', defaultDir: 'asc' },
+      { label: 'Company', key: 'companyName', left: true, type: 'string', defaultDir: 'asc' },
+      { label: 'Price', key: 'price', type: 'number', defaultDir: 'desc' },
+      { label: 'P/E (TTM)', key: 'pe', type: 'number', defaultDir: 'asc' },
+      { label: 'Forward P/E', key: 'forwardPE', type: 'number', defaultDir: 'asc' },
+    ];
+  }
+
+  return [
+    { label: '#', key: '__rank', left: true, sortable: false },
+    { label: 'Ticker', key: 'ticker', left: true, type: 'string', defaultDir: 'asc' },
+    { label: 'Price', key: 'price', type: 'number', defaultDir: 'desc' },
+    { label: 'P/E', key: 'pe', type: 'number', defaultDir: 'asc' },
+    { label: 'Fwd P/E', key: 'forwardPE', type: 'number', defaultDir: 'asc' },
+    { label: 'DCF', key: 'dcf', type: 'number', defaultDir: 'desc' },
+    { label: 'Exp Rev Gr', key: 'fwdRevGrowth', type: 'number', defaultDir: 'desc' },
+    { label: 'Altman Z', key: 'altman', type: 'number', defaultDir: 'desc' },
+    { label: 'Piotroski', key: 'piotroski', type: 'number', defaultDir: 'desc' },
+    { label: 'Growth', key: 'growthScore', type: 'number', defaultDir: 'desc' },
+    { label: 'Value', key: 'valueScore', type: 'number', defaultDir: 'desc' },
+    { label: 'Quality', key: 'qualityScore', type: 'number', defaultDir: 'desc' },
+  ];
+}
+
+function sortExplorerData(data, columns) {
+  const sortable = columns.find(c => c.key === explorerSortState.key && c.sortable !== false);
+  if (!sortable) return [...data];
+
+  const dir = explorerSortState.dir === 'asc' ? 1 : -1;
+
+  return [...data].sort((a, b) => {
+    const av = a[sortable.key];
+    const bv = b[sortable.key];
+    const aMissing = av == null || av === '';
+    const bMissing = bv == null || bv === '';
+
+    if (aMissing && bMissing) {
+      return String(a.ticker || '').localeCompare(String(b.ticker || ''));
+    }
+    if (aMissing) return 1;
+    if (bMissing) return -1;
+
+    let cmp;
+    if (sortable.type === 'string') {
+      cmp = String(av).localeCompare(String(bv));
+    } else {
+      cmp = Number(av) - Number(bv);
+    }
+
+    if (cmp === 0) {
+      cmp = String(a.ticker || '').localeCompare(String(b.ticker || ''));
+    }
+
+    return cmp * dir;
+  });
+}
+
+function toggleExplorerSort(key) {
+  const columns = getExplorerColumns(explorerView);
+  const clicked = columns.find(c => c.key === key);
+  if (!clicked || clicked.sortable === false) return;
+
+  if (explorerSortState.key === key) {
+    explorerSortState.dir = explorerSortState.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    explorerSortState.key = key;
+    explorerSortState.dir = clicked.defaultDir || 'desc';
+  }
+
+  renderExplorer();
+}
+
 async function openExplorer(view) {
-  explorerView = view || 'mktCap';
+  const nextView = view || 'mktCap';
+  if (explorerView !== nextView) {
+    resetExplorerSort(nextView);
+  }
+  explorerView = nextView;
   document.getElementById('explorer-overlay').classList.add('open');
   if (FUNDAMENTALS.length === 0) {
     await loadFundamentals(false);
@@ -1667,32 +1823,29 @@ function refreshExplorer() { loadFundamentals(true); }
 function renderExplorer() {
   const cfg = EXPLORER_VIEWS[explorerView] || EXPLORER_VIEWS.mktCap;
   document.getElementById('ex-title').textContent = '▸ ' + cfg.title;
-  const data = [...FUNDAMENTALS].sort(cfg.sort);
+  const columns = getExplorerColumns(explorerView);
+  const data = sortExplorerData(FUNDAMENTALS, columns);
   const wrap = document.getElementById('ex-table-wrap');
 
   if (!data.length) { wrap.innerHTML = '<div class="msg-box">No data available.</div>'; return; }
 
-  let cols, rowFn;
+  let rowFn;
 
   if (explorerView === 'mktCap') {
-    cols = ['#','Ticker','Company','Sector','Price','Market Cap'];
     rowFn = (s,i)=>`<td class="rank">${i+1}</td><td class="left tk">${s.ticker}</td>
       <td class="left">${s.companyName||'—'}</td><td class="left">${s.sector||'—'}</td>
       <td>$${fmtNum(s.price)}</td><td>${fmtCap(s.mktCap)}</td>`;
   } else if (explorerView === 'revGrowth') {
-    cols = ['#','Ticker','Company','Rev Growth (TTM)','Fwd Rev Growth','Growth Score'];
     rowFn = (s,i)=>`<td class="rank">${i+1}</td><td class="left tk">${s.ticker}</td>
       <td class="left">${s.companyName||'—'}</td>
       <td class="${pctClass(s.revGrowth)}">${fmtPct(s.revGrowth)}</td>
       <td class="${pctClass(s.fwdRevGrowth)}">${fmtPct(s.fwdRevGrowth)}</td>
       <td><span class="score-cell ${scoreClass(s.growthScore)}">${s.growthScore??'—'}</span></td>`;
   } else if (explorerView === 'pe') {
-    cols = ['#','Ticker','Company','Price','P/E (TTM)','Forward P/E'];
     rowFn = (s,i)=>`<td class="rank">${i+1}</td><td class="left tk">${s.ticker}</td>
       <td class="left">${s.companyName||'—'}</td>
       <td>$${fmtNum(s.price)}</td><td>${fmtNum(s.pe)}</td><td>${fmtNum(s.forwardPE)}</td>`;
   } else { // all
-    cols = ['#','Ticker','Price','P/E','Fwd P/E','DCF','Exp Rev Gr','Altman Z','Piotroski','Growth','Value','Quality'];
     rowFn = (s,i)=>`<td class="rank">${i+1}</td><td class="left tk">${s.ticker}</td>
       <td>$${fmtNum(s.price)}</td><td>${fmtNum(s.pe)}</td><td>${fmtNum(s.forwardPE)}</td>
       <td>$${fmtNum(s.dcf)}</td><td class="${pctClass(s.fwdRevGrowth)}">${fmtPct(s.fwdRevGrowth)}</td>
@@ -1702,8 +1855,14 @@ function renderExplorer() {
       <td><span class="score-cell ${scoreClass(s.qualityScore)}">${s.qualityScore??'—'}</span></td>`;
   }
 
-  const leftCols = new Set(['#','Ticker','Company','Sector']);
-  const thead = '<tr>' + cols.map(c=>`<th class="${leftCols.has(c)?'left':''}">${c}</th>`).join('') + '</tr>';
+  const thead = '<tr>' + columns.map(c => {
+    const left = c.left ? 'left' : '';
+    const sortable = c.sortable === false ? '' : 'sortable';
+    const sorted = c.key === explorerSortState.key ? 'sorted' : '';
+    const arrow = c.key === explorerSortState.key ? (explorerSortState.dir === 'asc' ? ' ▲' : ' ▼') : '';
+    const click = c.sortable === false ? '' : `onclick="toggleExplorerSort('${c.key}')"`;
+    return `<th class="${left} ${sortable} ${sorted}" ${click}>${c.label}${arrow}</th>`;
+  }).join('') + '</tr>';
   const tbody = data.map((s,i)=>`<tr>${rowFn(s,i)}</tr>`).join('');
   wrap.innerHTML = `<table class="ex-table"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
 }
@@ -1711,7 +1870,7 @@ function renderExplorer() {
 function exportExplorerCSV() {
   if (!FUNDAMENTALS.length) { alert('No data loaded yet.'); return; }
   const hdr = 'Ticker,Company,Sector,Exchange,Price,MarketCap,PE,ForwardPE,DCF,DCFUpside%,RevGrowth%,FwdRevGrowth%,AltmanZ,Piotroski,GrowthScore,ValueScore,QualityScore';
-  const data = [...FUNDAMENTALS].sort((EXPLORER_VIEWS[explorerView]||EXPLORER_VIEWS.mktCap).sort);
+  const data = sortExplorerData(FUNDAMENTALS, getExplorerColumns(explorerView));
   const rows = data.map(s=>[
     s.ticker,`"${(s.companyName||'').replace(/"/g,'""')}"`,s.sector,s.exchange,
     s.price??'',s.mktCap??'',s.pe??'',s.forwardPE??'',s.dcf??'',s.dcfUpside??'',
@@ -1730,6 +1889,171 @@ function printExplorer() { window.print(); }
 // ════════════════════════════════════════════════════════════════════════════
 // ── FILTER HISTORY (PostgreSQL-backed)
 // ════════════════════════════════════════════════════════════════════════════
+
+let historyRunsCache = [];
+let historyRunSortState = { key: 'created_at', dir: 'desc' };
+let activeHistoryRun = null;
+let historyResultSortState = { key: 'score', dir: 'desc' };
+
+function getHistoryRunColumns() {
+  return [
+    { label: '#', key: 'id', left: true, type: 'number', defaultDir: 'desc' },
+    { label: 'Label', key: 'label', left: true, type: 'string', defaultDir: 'asc' },
+    { label: 'Stocks', key: 'result_count', type: 'number', defaultDir: 'desc' },
+    { label: 'Saved', key: 'created_at', left: true, type: 'date', defaultDir: 'desc' },
+    { label: 'Actions', key: '__actions', left: true, sortable: false },
+  ];
+}
+
+function sortHistoryRows(rows, columns, sortState) {
+  const col = columns.find(c => c.key === sortState.key && c.sortable !== false);
+  if (!col) return [...rows];
+  const dir = sortState.dir === 'asc' ? 1 : -1;
+
+  return [...rows].sort((a, b) => {
+    const av = a[col.key];
+    const bv = b[col.key];
+    const aMissing = av == null || av === '';
+    const bMissing = bv == null || bv === '';
+
+    if (aMissing && bMissing) return 0;
+    if (aMissing) return 1;
+    if (bMissing) return -1;
+
+    let cmp = 0;
+    if (col.type === 'string') {
+      cmp = String(av).localeCompare(String(bv));
+    } else if (col.type === 'date') {
+      cmp = new Date(av).getTime() - new Date(bv).getTime();
+    } else {
+      cmp = Number(av) - Number(bv);
+    }
+
+    if (cmp === 0 && col.key !== 'id') {
+      cmp = Number(a.id || 0) - Number(b.id || 0);
+    }
+
+    return cmp * dir;
+  });
+}
+
+function toggleHistorySort(key) {
+  const columns = getHistoryRunColumns();
+  const col = columns.find(c => c.key === key);
+  if (!col || col.sortable === false) return;
+
+  if (historyRunSortState.key === key) {
+    historyRunSortState.dir = historyRunSortState.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    historyRunSortState.key = key;
+    historyRunSortState.dir = col.defaultDir || 'desc';
+  }
+
+  renderHistoryRunsTable();
+}
+
+function renderHistoryRunsTable() {
+  const wrap = document.getElementById('hist-table-wrap');
+  const columns = getHistoryRunColumns();
+  const runs = sortHistoryRows(historyRunsCache, columns, historyRunSortState);
+  const thead = '<tr>' + columns.map(c => {
+    const left = c.left ? 'left' : '';
+    const sortable = c.sortable === false ? '' : 'sortable';
+    const sorted = c.key === historyRunSortState.key ? 'sorted' : '';
+    const arrow = c.key === historyRunSortState.key ? (historyRunSortState.dir === 'asc' ? ' ▲' : ' ▼') : '';
+    const click = c.sortable === false ? '' : `onclick="toggleHistorySort('${c.key}')"`;
+    return `<th class="${left} ${sortable} ${sorted}" ${click}>${c.label}${arrow}</th>`;
+  }).join('') + '</tr>';
+
+  const tbody = runs.map(r => {
+    const dt = new Date(r.created_at).toLocaleString();
+    return `<tr>
+      <td class="left rank">${r.id}</td>
+      <td class="left">${(r.label||'—').replace(/</g,'&lt;')}</td>
+      <td>${r.result_count ?? '—'}</td>
+      <td class="left">${dt}</td>
+      <td class="left"><span class="row-link" onclick="viewRun('${r.id}')">view</span> · <span class="row-link" onclick="exportRunCSV('${r.id}')">csv</span></td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `<table class="ex-table"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+}
+
+function getHistoryResultColumns() {
+  return [
+    { label: 'Ticker', key: 'ticker', left: true, type: 'string', defaultDir: 'asc' },
+    { label: 'Sector', key: 'sector', left: true, type: 'string', defaultDir: 'asc' },
+    { label: 'Price', key: 'price', type: 'number', defaultDir: 'desc' },
+    { label: 'Chg %', key: 'change', type: 'number', defaultDir: 'desc' },
+    { label: 'Rev Gr', key: 'revGrowth', type: 'number', defaultDir: 'desc' },
+    { label: 'Vol×', key: 'volRatio', type: 'number', defaultDir: 'desc' },
+    { label: '52W%', key: 'pct52H', type: 'number', defaultDir: 'desc' },
+    { label: 'Beta', key: 'beta', type: 'number', defaultDir: 'desc' },
+    { label: 'P/E', key: 'pe', type: 'number', defaultDir: 'asc' },
+    { label: 'Score', key: 'score', type: 'number', defaultDir: 'desc' },
+    { label: 'Signal', key: 'signal', left: true, type: 'string', defaultDir: 'asc' },
+  ];
+}
+
+function getSortedHistoryRunResults(run, useActiveSort = false) {
+  const rows = Array.isArray(run?.results) ? run.results : [];
+  if (!rows.length) return [];
+  const columns = getHistoryResultColumns();
+  const sortState = useActiveSort
+    ? historyResultSortState
+    : { key: 'score', dir: 'desc' };
+  return sortHistoryRows(rows, columns, sortState);
+}
+
+function toggleHistoryResultSort(key) {
+  if (!activeHistoryRun) return;
+  const columns = getHistoryResultColumns();
+  const col = columns.find(c => c.key === key);
+  if (!col || col.sortable === false) return;
+
+  if (historyResultSortState.key === key) {
+    historyResultSortState.dir = historyResultSortState.dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    historyResultSortState.key = key;
+    historyResultSortState.dir = col.defaultDir || 'desc';
+  }
+
+  renderHistoryRunTable(activeHistoryRun);
+}
+
+function renderHistoryRunTable(run) {
+  const wrap = document.getElementById('hist-table-wrap');
+  const rows = Array.isArray(run.results) ? run.results : [];
+  document.getElementById('hist-meta').innerHTML =
+    `Run #${run.id} · <strong>${(run.label||'—')}</strong> · ${rows.length} stocks · ${new Date(run.created_at).toLocaleString()} · <span class="row-link" onclick="loadHistory()">← back to list</span>`;
+
+  if (!rows.length) {
+    wrap.innerHTML = '<div class="msg-box">This run has no stored results.</div>';
+    return;
+  }
+
+  const columns = getHistoryResultColumns();
+  const sortedRows = getSortedHistoryRunResults(run, true);
+  const thead = '<tr>' + columns.map(c => {
+    const left = c.left ? 'left' : '';
+    const sorted = c.key === historyResultSortState.key ? 'sorted' : '';
+    const arrow = c.key === historyResultSortState.key ? (historyResultSortState.dir === 'asc' ? ' ▲' : ' ▼') : '';
+    return `<th class="${left} sortable ${sorted}" onclick="toggleHistoryResultSort('${c.key}')">${c.label}${arrow}</th>`;
+  }).join('') + '</tr>';
+
+  const tbody = sortedRows.map(s=>`<tr>
+    <td class="left tk">${s.ticker}</td><td class="left">${s.sector||'—'}</td>
+    <td>$${fmtNum(s.price)}</td>
+    <td class="${s.change>=0?'pos':'neg'}">${s.change!=null?(s.change>=0?'+':'')+Number(s.change).toFixed(2)+'%':'—'}</td>
+    <td class="${pctClass(s.revGrowth)}">${s.revGrowth!=null?(s.revGrowth>0?'+':'')+s.revGrowth+'%':'—'}</td>
+    <td>${s.volRatio!=null?Number(s.volRatio).toFixed(1)+'×':'—'}</td>
+    <td>${s.pct52H ?? '—'}%</td><td>${s.beta ?? '—'}</td><td>${s.pe ?? '—'}</td>
+    <td><span class="score-cell ${scoreClass(s.score)}">${s.score ?? '—'}</span></td>
+    <td class="left">${s.signal || '—'}</td>
+  </tr>`).join('');
+
+  wrap.innerHTML = `<table class="ex-table"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+}
 
 // Capture the criteria + standard filters currently applied, for saving.
 function currentCriteriaSnapshot() {
@@ -1825,6 +2149,7 @@ function handleHistoryBackdrop(e) {
 
 async function loadHistory() {
   const wrap = document.getElementById('hist-table-wrap');
+  activeHistoryRun = null;
   wrap.innerHTML = '<div class="msg-box">⟳ Loading history…</div>';
   document.getElementById('hist-meta').textContent = '';
   try {
@@ -1836,24 +2161,14 @@ async function loadHistory() {
       return;
     }
     const runs = j.runs || [];
+    historyRunsCache = runs;
     document.getElementById('hist-meta').textContent =
       `${runs.length} saved run(s) · auto-deleted after ${j.retentionDays} days`;
     if (!runs.length) {
       wrap.innerHTML = '<div class="msg-box">No saved runs yet. Apply filters, then click 💾 SAVE RUN.</div>';
       return;
     }
-    const thead = '<tr><th class="left">#</th><th class="left">Label</th><th>Stocks</th><th class="left">Saved</th><th class="left">Actions</th></tr>';
-    const tbody = runs.map(r => {
-      const dt = new Date(r.created_at).toLocaleString();
-      return `<tr>
-        <td class="left rank">${r.id}</td>
-        <td class="left">${(r.label||'—').replace(/</g,'&lt;')}</td>
-        <td>${r.result_count ?? '—'}</td>
-        <td class="left">${dt}</td>
-        <td class="left"><span class="row-link" onclick="viewRun('${r.id}')">view</span> · <span class="row-link" onclick="exportRunCSV('${r.id}')">csv</span></td>
-      </tr>`;
-    }).join('');
-    wrap.innerHTML = `<table class="ex-table"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+    renderHistoryRunsTable();
   } catch (err) {
     wrap.innerHTML = `<div class="msg-box error">⚠ ${err.message}</div>`;
   }
@@ -1869,25 +2184,9 @@ async function viewRun(id) {
   const wrap = document.getElementById('hist-table-wrap');
   wrap.innerHTML = '<div class="msg-box">⟳ Loading run…</div>';
   try {
-    const run = await fetchRun(id);
-    const rows = Array.isArray(run.results) ? run.results : [];
-    document.getElementById('hist-meta').innerHTML =
-      `Run #${run.id} · <strong>${(run.label||'—')}</strong> · ${rows.length} stocks · ${new Date(run.created_at).toLocaleString()} · <span class="row-link" onclick="loadHistory()">← back to list</span>`;
-    if (!rows.length) { wrap.innerHTML = '<div class="msg-box">This run has no stored results.</div>'; return; }
-    const cols = ['Ticker','Sector','Price','Chg %','Rev Gr','Vol×','52W%','Beta','P/E','Score','Signal'];
-    const left = new Set(['Ticker','Sector','Signal']);
-    const thead = '<tr>' + cols.map(c=>`<th class="${left.has(c)?'left':''}">${c}</th>`).join('') + '</tr>';
-    const tbody = rows.map(s=>`<tr>
-      <td class="left tk">${s.ticker}</td><td class="left">${s.sector||'—'}</td>
-      <td>$${fmtNum(s.price)}</td>
-      <td class="${s.change>=0?'pos':'neg'}">${s.change!=null?(s.change>=0?'+':'')+Number(s.change).toFixed(2)+'%':'—'}</td>
-      <td class="${pctClass(s.revGrowth)}">${s.revGrowth!=null?(s.revGrowth>0?'+':'')+s.revGrowth+'%':'—'}</td>
-      <td>${s.volRatio!=null?Number(s.volRatio).toFixed(1)+'×':'—'}</td>
-      <td>${s.pct52H ?? '—'}%</td><td>${s.beta ?? '—'}</td><td>${s.pe ?? '—'}</td>
-      <td><span class="score-cell ${scoreClass(s.score)}">${s.score ?? '—'}</span></td>
-      <td class="left">${s.signal || '—'}</td>
-    </tr>`).join('');
-    wrap.innerHTML = `<table class="ex-table"><thead>${thead}</thead><tbody>${tbody}</tbody></table>`;
+    activeHistoryRun = await fetchRun(id);
+    historyResultSortState = { key: 'score', dir: 'desc' };
+    renderHistoryRunTable(activeHistoryRun);
   } catch (err) {
     wrap.innerHTML = `<div class="msg-box error">⚠ ${err.message}</div>`;
   }
@@ -1896,7 +2195,8 @@ async function viewRun(id) {
 async function exportRunCSV(id) {
   try {
     const run = await fetchRun(id);
-    const rows = Array.isArray(run.results) ? run.results : [];
+    const useActiveSort = !!(activeHistoryRun && String(activeHistoryRun.id) === String(run.id));
+    const rows = getSortedHistoryRunResults(run, useActiveSort);
     if (!rows.length) { alert('This run has no stored results.'); return; }
     const hdr = 'Ticker,Company,Sector,Index,Price,Change%,MarketCap,RevGrowth%,EpsGrowth%,VolRatio,52WHigh%,Beta,PE,Score,Signal';
     const csv = rows.map(s=>[
