@@ -871,6 +871,178 @@ app.get('/api/universe-size', (req, res) => {
 });
 
 /**
+ * AI Agent endpoint: parse natural language queries and fetch FMP data
+ */
+app.post('/api/ai-agent', async (req, res) => {
+    try {
+        const query = String(req.body?.query || '').trim();
+        if (!query) {
+            return res.status(400).json({ error: 'query is required' });
+        }
+
+        // Simple natural language parsing: extract ticker symbols and keywords
+        const upperQuery = query.toUpperCase();
+        const tickerPattern = /\b([A-Z]{1,5})\b/g;
+        const tickers = [];
+        let match;
+        while ((match = tickerPattern.exec(upperQuery)) !== null) {
+            const ticker = match[1];
+            if (ticker.length <= 5 && !['FROM', 'FOR', 'THE', 'AND', 'GET', 'SHOW', 'FETCH'].includes(ticker)) {
+                tickers.push(ticker);
+            }
+        }
+
+        if (!tickers.length) {
+            return res.json({
+                error: 'No ticker symbols found in query (e.g., "Get earnings for AAPL" or "Show revenue for TSLA")',
+                section: 'Error'
+            });
+        }
+
+        const ticker = tickers[0]; // Use first ticker for now
+        const sections = [];
+
+        // Determine what data to fetch based on keywords
+        const hasEarnings = /earnings|eps|net income|income/i.test(query);
+        const hasRevenue = /revenue|sales|income/i.test(query);
+        const hasProfile = /profile|sector|industry|company|description/i.test(query);
+        const hasGrowth = /growth|grow/i.test(query);
+        const hasPricing = /price|pe|valuation|value/i.test(query);
+        const defaultFetch = !hasEarnings && !hasRevenue && !hasProfile && !hasGrowth && !hasPricing;
+
+        try {
+            // Fetch profile
+            if (hasProfile || defaultFetch) {
+                try {
+                    const profileData = await fmpGet(`profile?symbol=${encodeURIComponent(ticker)}`);
+                    const p = Array.isArray(profileData) ? profileData[0] : profileData;
+                    if (p) {
+                        sections.push({
+                            title: `Company Profile: ${ticker}`,
+                            data: {
+                                'Company Name': p.companyName || '—',
+                                'Sector': p.sector || '—',
+                                'Industry': p.industry || '—',
+                                'Exchange': p.exchange || '—',
+                                'Market Cap': p.marketCap ? `$${(p.marketCap / 1e9).toFixed(2)}B` : '—',
+                                'Website': p.website || '—',
+                                'CEO': p.ceo || '—'
+                            }
+                        });
+                    }
+                } catch (e) {
+                    console.warn(`Profile fetch for ${ticker} failed:`, e.message);
+                }
+            }
+
+            // Fetch financial growth (revenue, EPS)
+            if (hasRevenue || hasGrowth || hasEarnings || defaultFetch) {
+                try {
+                    const growthData = await fmpGet(`financial-growth?symbol=${encodeURIComponent(ticker)}&limit=1`);
+                    const g = Array.isArray(growthData) ? growthData[0] : growthData;
+                    if (g) {
+                        const growthSection = {
+                            title: `Financial Growth: ${ticker}`,
+                            data: {}
+                        };
+                        if (g.revenueGrowth != null) {
+                            growthSection.data['Revenue Growth (YoY)'] = `${(g.revenueGrowth * 100).toFixed(2)}%`;
+                        }
+                        if (g.epsgrowth != null) {
+                            growthSection.data['EPS Growth'] = `${(g.epsgrowth * 100).toFixed(2)}%`;
+                        }
+                        if (g.grossProfitGrowth != null) {
+                            growthSection.data['Gross Profit Growth'] = `${(g.grossProfitGrowth * 100).toFixed(2)}%`;
+                        }
+                        if (Object.keys(growthSection.data).length > 0) {
+                            sections.push(growthSection);
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`Growth fetch for ${ticker} failed:`, e.message);
+                }
+            }
+
+            // Fetch key metrics (P/E, market cap, etc.)
+            if (hasPricing || defaultFetch) {
+                try {
+                    const metricsData = await fmpGet(`key-metrics-ttm?symbol=${encodeURIComponent(ticker)}`);
+                    const m = Array.isArray(metricsData) ? metricsData[0] : metricsData;
+                    if (m) {
+                        const metricsSection = {
+                            title: `Key Metrics: ${ticker}`,
+                            data: {}
+                        };
+                        if (m.peRatioTTM != null) {
+                            metricsSection.data['P/E Ratio'] = m.peRatioTTM.toFixed(2);
+                        }
+                        if (m.pbRatioTTM != null) {
+                            metricsSection.data['P/B Ratio'] = m.pbRatioTTM.toFixed(2);
+                        }
+                        if (m.roeTTM != null) {
+                            metricsSection.data['ROE'] = `${(m.roeTTM * 100).toFixed(2)}%`;
+                        }
+                        if (m.roaTTM != null) {
+                            metricsSection.data['ROA'] = `${(m.roaTTM * 100).toFixed(2)}%`;
+                        }
+                        if (Object.keys(metricsSection.data).length > 0) {
+                            sections.push(metricsSection);
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`Metrics fetch for ${ticker} failed:`, e.message);
+                }
+            }
+
+            // Fetch current quote (price, volume)
+            try {
+                const quoteData = await fmpGet(`quote/${ticker}`);
+                const q = Array.isArray(quoteData) ? quoteData[0] : quoteData;
+                if (q && q.price) {
+                    sections.push({
+                        title: `Current Quote: ${ticker}`,
+                        data: {
+                            'Price': `$${q.price.toFixed(2)}`,
+                            'Change': `${q.change != null ? q.change.toFixed(2) : '—'}%`,
+                            'Volume': q.volume ? q.volume.toLocaleString() : '—',
+                            'Avg Volume': q.avgVolume ? q.avgVolume.toLocaleString() : '—',
+                            'High 52W': q.yearHigh != null ? `$${q.yearHigh.toFixed(2)}` : '—',
+                            'Low 52W': q.yearLow != null ? `$${q.yearLow.toFixed(2)}` : '—'
+                        }
+                    });
+                }
+            } catch (e) {
+                console.warn(`Quote fetch for ${ticker} failed:`, e.message);
+            }
+
+            if (sections.length === 0) {
+                return res.json({
+                    error: `No data found for ticker ${ticker}. Please verify the symbol is valid.`,
+                    section: 'Error'
+                });
+            }
+
+            res.json({
+                title: `AI Agent: ${query}`,
+                query,
+                ticker,
+                sections
+            });
+        } catch (err) {
+            res.json({
+                error: `Error fetching data for ${ticker}: ${err.message}`,
+                section: 'Error'
+            });
+        }
+    } catch (err) {
+        res.status(500).json({
+            error: `AI Agent error: ${err.message}`,
+            section: 'Error'
+        });
+    }
+});
+
+/**
  * 404 handler — must come before the error handler so unknown routes fall through here.
  */
 app.use((req, res) => {
