@@ -7,6 +7,7 @@ const db = require('./db');
 const { runSkillRunner } = require('./skillRunner');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
+const { loadDeepDiveResults } = require('./storage');
 
 // ════════════════════════════════════════════════════════════════════════════════
 // ── CONFIGURATION & CONSTANTS
@@ -1105,6 +1106,15 @@ app.get('/api/deep-dive-results', async (req, res) => {
         }
         res.status(500).json({ error: 'Failed to load deep-dive results', message: err.message });
     }
+});
+
+/**
+ * Get deep-dive results from storage
+ */
+app.get('/api/deep-dive', (req, res) => {
+  const data = loadDeepDiveResults();
+  if (!data) return res.status(404).json({ error: 'No results yet' });
+  res.json(data);
 });
 
 // ════════════════════════════════════════════════════════════════════════════
