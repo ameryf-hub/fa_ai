@@ -4,6 +4,9 @@ const fs = require('fs').promises;
 const path = require('path');
 const axios = require('axios');
 const db = require('./db');
+const { runSkillRunner } = require('./skillRunner');
+const { createServer } = require('http');
+const { Server } = require('socket.io');
 
 // ════════════════════════════════════════════════════════════════════════════════
 // ── CONFIGURATION & CONSTANTS
@@ -33,6 +36,201 @@ async function loadRussellExtra() {
         }
         RUSSELL_EXTRA = [];
     }
+}
+
+// ════════════════════════════════════════════════════════════════════════════════
+// ── SCANNER STATE & SCHEDULER
+// ════════════════════════════════════════════════════════════════════════════════
+
+let isScanning = false; // Prevent overlapping scans
+let lastAutoRunAt = null; // Last scheduled auto-run timestamp
+let lastManualRunAt = null; // Last manual trigger timestamp
+let scanScheduler = null; // Scheduler interval ID
+let io = null; // Socket.IO instance (initialized with HTTP server)
+const DEEP_DIVE_DB = path.join(__dirname, 'data', 'deep-dive-results.json');
+
+/**
+ * Save deep-dive results to DB and JSON file
+ */
+async function saveDeepDiveResults(results) {
+    const payload = {
+        timestamp: new Date().toISOString(),
+        results
+    };
+
+    // Save to PostgreSQL if available
+    if (db.isReady()) {
+        try {
+            await db.saveSnapshot('deep-dive', payload);
+        } catch (e) {
+            console.warn('  ⚠ Failed to save deep-dive to PostgreSQL:', e.message);
+        }
+    }
+
+    // Always save to JSON file as fallback
+    try {
+        await fs.mkdir(path.dirname(DEEP_DIVE_DB), { recursive: true });
+        await fs.writeFile(DEEP_DIVE_DB, JSON.stringify(payload, null, 2), 'utf-8');
+        console.log(`  ✓ Saved deep-dive results to data/deep-dive-results.json`);
+    } catch (e) {
+        console.warn('  ⚠ Failed to save deep-dive results to file:', e.message);
+    }
+}
+
+/**
+ * Execute the full scanner pipeline: screener + skill runner
+ */
+async function executeScannerPipeline(isAutomatic = false) {
+    if (isScanning) {
+        console.log('  Scanner already running, skipping...');
+        return null;
+    }
+
+    isScanning = true;
+    const startTime = Date.now();
+    const label = isAutomatic ? 'AUTO-RUN' : 'MANUAL-RUN';
+
+    console.log(`\n[${label}] Starting full scanner pipeline [${getETTime()}]...`);
+    if (io) io.emit('scanStarted', { label, startTime });
+
+    try {
+        // Step 1: Run screener
+        if (io) io.emit('scanProgress', { step: 'screener', message: 'Fetching market data...' });
+        
+        console.log('  Fetching index constituents...');
+        const universe = await fetchConstituents();
+
+        const quotes = await batchQuotes(universe.map(u => u.ticker));
+        console.log(`  Got quotes for ${Object.keys(quotes).length} tickers`);
+
+        const profiles = await enrichProfiles(Object.keys(quotes).slice(0, ENRICH_LIMIT));
+
+        const VOL_THRESHOLD = 1.3;
+        const results = [];
+
+        for (const ticker of Object.keys(quotes)) {
+            const q = quotes[ticker];
+            const p = profiles[ticker] || {};
+
+            const price = p.price ?? q.price;
+            const volume = p.volume ?? q.volume ?? 0;
+            const avgVolume = p.averageVolume ?? 0;
+            const volRatio = avgVolume > 0
+                ? Math.round((volume / avgVolume) * 10) / 10
+                : null;
+
+            if (volRatio != null && volRatio < VOL_THRESHOLD) continue;
+
+            let yearHigh = 0;
+            let yearLow = 0;
+            if (typeof p.range === 'string' && p.range.includes('-')) {
+                const [lo, hi] = p.range.split('-').map(v => parseFloat(v));
+                if (!Number.isNaN(lo)) yearLow = lo;
+                if (!Number.isNaN(hi)) yearHigh = hi;
+            }
+
+            const pct52H = yearHigh > 0 ? Math.round((price / yearHigh) * 100) : 0;
+            const beta = (p.beta ?? q.beta) != null
+                ? Math.round((p.beta ?? q.beta) * 100) / 100
+                : null;
+            const mktCap = p.marketCap ?? q.marketCap ?? 0;
+
+            const score = computeScore({ volRatio, revGrowth: null, pe: null, epsGrowth: null, pct52H, beta });
+
+            results.push({
+                ticker,
+                companyName: p.companyName || q.companyName || ticker,
+                exchange: p.exchange || q.exchange || '—',
+                sector: p.sector || q.sector || '—',
+                price,
+                change: Math.round((p.changePercentage ?? q.changePercentage ?? 0) * 100) / 100,
+                mktCap,
+                volRatio,
+                volume,
+                avgVolume,
+                pct52H,
+                yearHigh,
+                yearLow,
+                beta,
+                score
+            });
+        }
+
+        results.sort((a, b) => b.score - a.score);
+        const top20Symbols = results.slice(0, 20).map(r => r.ticker);
+
+        console.log(`  ✓ Screener complete: ${results.length} stocks, top 20: ${top20Symbols.join(', ')}`);
+
+        // Step 2: Run skill runner on top 20
+        if (io) io.emit('scanProgress', { step: 'skill-runner', message: `Running AI analysis on ${top20Symbols.length} stocks...` });
+        
+        console.log(`  Running Skill Runner on top 20 symbols...`);
+        const deepDiveResults = await runSkillRunner(top20Symbols);
+        
+        if (io) {
+            deepDiveResults.forEach((result, idx) => {
+                io.emit('scanProgress', {
+                    step: 'skill-runner',
+                    message: `Analyzed ${result.symbol}`,
+                    progress: Math.round(((idx + 1) / deepDiveResults.length) * 100)
+                });
+            });
+        }
+
+        await saveDeepDiveResults(deepDiveResults);
+
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        console.log(`  ✓ Scanner pipeline complete in ${elapsed}s [${getETTime()}]`);
+
+        const response = {
+            label,
+            screenerResults: results,
+            topStocks: results.slice(0, 20),
+            deepDiveResults,
+            elapsedSeconds: elapsed,
+            completedAt: new Date().toISOString()
+        };
+
+        if (io) io.emit('scanCompleted', response);
+
+        if (isAutomatic) lastAutoRunAt = new Date().toISOString();
+        else lastManualRunAt = new Date().toISOString();
+
+        return response;
+    } catch (err) {
+        console.error(`  ✗ Scanner pipeline failed: ${err.message}`);
+        if (io) io.emit('scanError', { error: err.message });
+        return null;
+    } finally {
+        isScanning = false;
+    }
+}
+
+/**
+ * Initialize the scheduler for auto-runs at 9:30 AM and 3:30 PM ET
+ */
+function initializeScheduler() {
+    const schedule = () => {
+        const now = new Date();
+        const etTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+        const hours = etTime.getHours();
+        const minutes = etTime.getMinutes();
+
+        // Check if it's 9:30 AM or 3:30 PM ET
+        const is9_30 = hours === 9 && minutes === 30;
+        const is3_30 = hours === 15 && minutes === 30;
+
+        if (is9_30 || is3_30) {
+            console.log(`\n[SCHEDULER] Triggering auto-run at ${hours}:${minutes < 10 ? '0' : ''}${minutes} ET`);
+            executeScannerPipeline(true).catch(err => {
+                console.error('[SCHEDULER] Auto-run failed:', err.message);
+            });
+        }
+    };
+
+    // Check every minute
+    scanScheduler = setInterval(schedule, 60 * 1000);
+    console.log('✓ Scanner scheduler initialized (9:30 AM & 3:30 PM ET)');
 }
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -106,6 +304,9 @@ const apiCache = new SimpleCache();
 // ════════════════════════════════════════════════════════════════════════════════
 
 const app = express();
+
+// Socket.IO setup for real-time updates (will be attached to HTTP server on startup)
+// io instance will be initialized when server starts
 
 // Middleware: JSON parsing
 app.use(express.json());
@@ -819,46 +1020,188 @@ app.get('/api/filter-runs/:id', async (req, res) => {
     res.json(run);
 });
 
+// ════════════════════════════════════════════════════════════════════════════════
+// ── SCANNER ENDPOINTS (Scheduled + Manual Trigger)
+// ════════════════════════════════════════════════════════════════════════════════
+
 /**
- * Global watchlist endpoints (Railway PostgreSQL backed)
+ * Manual trigger: Start a scanner run immediately
+ * Frontend calls this to run on-demand
+ */
+app.post('/api/scanner-run', async (req, res) => {
+    if (isScanning) {
+        return res.status(429).json({ 
+            running: true, 
+            message: 'Scanner already running. Please wait for completion.' 
+        });
+    }
+
+    // Start scan in background (don't wait for response)
+    res.json({ 
+        running: true, 
+        message: 'Scanner started. Updates will be sent via WebSocket.',
+        label: 'MANUAL-RUN'
+    });
+
+    // Execute asynchronously without blocking response
+    setImmediate(() => {
+        executeScannerPipeline(false).catch(err => {
+            console.error('Manual scanner run failed:', err.message);
+            if (io) io.emit('scanError', { error: err.message, label: 'MANUAL-RUN' });
+        });
+    });
+});
+
+/**
+ * Get current scanner status (running/idle, last run times, next scheduled run)
+ */
+app.get('/api/scanner-status', (req, res) => {
+    const now = new Date();
+    const etTime = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+    
+    // Calculate next scheduled run times
+    let nextRunAt = null;
+    const hours = etTime.getHours();
+    const minutes = etTime.getMinutes();
+    
+    if (hours < 9 || (hours === 9 && minutes < 30)) {
+        // Next run is 9:30 AM today
+        const next = new Date(etTime);
+        next.setHours(9, 30, 0, 0);
+        nextRunAt = next.toISOString();
+    } else if (hours < 15 || (hours === 15 && minutes < 30)) {
+        // Next run is 3:30 PM today
+        const next = new Date(etTime);
+        next.setHours(15, 30, 0, 0);
+        nextRunAt = next.toISOString();
+    } else {
+        // Next run is 9:30 AM tomorrow
+        const next = new Date(etTime);
+        next.setDate(next.getDate() + 1);
+        next.setHours(9, 30, 0, 0);
+        nextRunAt = next.toISOString();
+    }
+
+    res.json({
+        isRunning: isScanning,
+        lastAutoRunAt,
+        lastManualRunAt,
+        nextAutoRunAt: nextRunAt,
+        currentTimeET: etTime.toISOString()
+    });
+});
+
+/**
+ * Get saved deep-dive results
+ */
+app.get('/api/deep-dive-results', async (req, res) => {
+    try {
+        const data = await fs.readFile(DEEP_DIVE_DB, 'utf-8');
+        const payload = JSON.parse(data);
+        res.json(payload);
+    } catch (err) {
+        if (err.code === 'ENOENT') {
+            return res.json({ error: 'No deep-dive results yet', results: [] });
+        }
+        res.status(500).json({ error: 'Failed to load deep-dive results', message: err.message });
+    }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// ── WATCHLIST HELPERS (JSON fallback when DB unavailable)
+// ════════════════════════════════════════════════════════════════════════════
+
+const WATCHLIST_FILE = path.join(__dirname, 'data', 'watchlist.json');
+
+async function loadWatchlistJSON() {
+    try {
+        const data = await fs.readFile(WATCHLIST_FILE, 'utf-8');
+        return JSON.parse(data).items || [];
+    } catch (e) {
+        return [];
+    }
+}
+
+async function saveWatchlistJSON(items) {
+    try {
+        await fs.mkdir(path.dirname(WATCHLIST_FILE), { recursive: true });
+        await fs.writeFile(WATCHLIST_FILE, JSON.stringify({ items }, null, 2));
+    } catch (e) {
+        console.warn('⚠ Failed to save watchlist JSON:', e.message);
+    }
+}
+
+/**
+ * Global watchlist endpoints (Railway PostgreSQL backed, with JSON fallback)
  */
 app.get('/api/watchlist', async (req, res) => {
     try {
-        if (!db.isReady()) {
-            return res.json({ items: [], dbEnabled: false });
+        if (db.isReady()) {
+            const items = await db.listWatchlist();
+            return res.json({ items, dbEnabled: true });
+        } else {
+            const items = await loadWatchlistJSON();
+            return res.json({ items, dbEnabled: false });
         }
-        const items = await db.listWatchlist();
-        return res.json({ items, dbEnabled: true });
     } catch (err) {
+        console.warn('⚠ Watchlist load failed:', err.message);
         return res.status(500).json({ error: 'Failed to load watchlist', message: err.message });
     }
 });
 
 app.post('/api/watchlist', async (req, res) => {
     try {
-        if (!db.isReady()) {
-            return res.status(503).json({ error: 'Database not configured' });
-        }
         const symbol = String(req.body?.symbol || '').trim().toUpperCase();
         if (!symbol) {
             return res.status(400).json({ error: 'symbol is required' });
         }
-        const item = await db.addToWatchlist(symbol);
-        return res.json({ saved: true, item });
+
+        if (db.isReady()) {
+            const item = await db.addToWatchlist(symbol);
+            return res.json({ saved: true, item, dbEnabled: true });
+        } else {
+            // JSON fallback
+            const items = await loadWatchlistJSON();
+            // Check if already exists
+            if (!items.some(i => i.symbol === symbol)) {
+                items.push({ symbol, created_at: new Date().toISOString() });
+                await saveWatchlistJSON(items);
+            }
+            return res.json({ 
+                saved: true, 
+                item: { symbol, created_at: new Date().toISOString() },
+                dbEnabled: false 
+            });
+        }
     } catch (err) {
+        console.warn('⚠ Add to watchlist failed:', err.message);
         return res.status(500).json({ error: 'Failed to add symbol', message: err.message });
     }
 });
 
 app.delete('/api/watchlist/:symbol', async (req, res) => {
     try {
-        if (!db.isReady()) {
-            return res.status(503).json({ error: 'Database not configured' });
-        }
         const symbol = String(req.params.symbol || '').trim().toUpperCase();
-        const removed = await db.removeFromWatchlist(symbol);
-        return res.json({ removed, symbol });
+        if (!symbol) {
+            return res.status(400).json({ error: 'symbol is required' });
+        }
+
+        if (db.isReady()) {
+            const removed = await db.removeFromWatchlist(symbol);
+            return res.json({ removed, symbol, dbEnabled: true });
+        } else {
+            // JSON fallback
+            const items = await loadWatchlistJSON();
+            const beforeLen = items.length;
+            const filtered = items.filter(i => i.symbol !== symbol);
+            const removed = filtered.length < beforeLen;
+            if (removed) {
+                await saveWatchlistJSON(filtered);
+            }
+            return res.json({ removed, symbol, dbEnabled: false });
+        }
     } catch (err) {
+        console.warn('⚠ Remove from watchlist failed:', err.message);
         return res.status(500).json({ error: 'Failed to remove symbol', message: err.message });
     }
 });
@@ -1072,12 +1415,45 @@ if (require.main === module) {
     
     // Load Russell extras and initialise the database before starting server
     Promise.all([loadRussellExtra(), db.initDb()]).then(([, dbOk]) => {
-        app.listen(PORT, () => {
+        // Create HTTP server and attach Socket.IO
+        const httpServer = createServer(app);
+        io = new Server(httpServer, {
+            cors: {
+                origin: process.env.ALLOWED_ORIGINS
+                    ? process.env.ALLOWED_ORIGINS.split(',')
+                    : ['http://localhost:3000', 'http://localhost:5000'],
+                methods: ['GET', 'POST']
+            }
+        });
+
+        // Socket.IO connection handler
+        io.on('connection', (socket) => {
+            console.log(`✓ WebSocket client connected: ${socket.id}`);
+            
+            // Send current status to newly connected client
+            socket.emit('statusUpdate', {
+                isRunning: isScanning,
+                lastAutoRunAt,
+                lastManualRunAt
+            });
+
+            socket.on('disconnect', () => {
+                console.log(`✗ WebSocket client disconnected: ${socket.id}`);
+            });
+        });
+
+        // Start the scheduler
+        initializeScheduler();
+
+        // Listen on HTTP server
+        httpServer.listen(PORT, () => {
             console.log(`\n🚀 Apex Core Engine running on port ${PORT}`);
             console.log(`   Environment: ${process.env.NODE_ENV || 'development'}`);
             console.log(`   FMP API Key: ${FMP_KEY ? '✓ Set' : '✗ Not set'}`);
             console.log(`   Database: ${dbOk ? '✓ PostgreSQL' : 'JSON fallback'}`);
-            console.log(`   Rate Limiting: ✓ Enabled (30 req/min)\n`);
+            console.log(`   Rate Limiting: ✓ Enabled (30 req/min)`);
+            console.log(`   Scanner: ✓ Scheduled (9:30 AM & 3:30 PM ET)`);
+            console.log(`   WebSocket: ✓ Enabled\n`);
         });
     });
 }

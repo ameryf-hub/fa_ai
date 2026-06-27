@@ -1139,7 +1139,10 @@ async function addWatchlistSymbol(event) {
   event.preventDefault();
   const input = document.getElementById('watchlist-input');
   const symbol = sanitizeSymbol(input?.value);
-  if (!symbol) return;
+  if (!symbol) {
+    alert('Please enter a valid ticker symbol (e.g., AAPL)');
+    return;
+  }
 
   try {
     const base = getBackendURL();
@@ -1148,11 +1151,17 @@ async function addWatchlistSymbol(event) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ symbol })
     });
-    if (!res.ok) throw new Error('add failed');
+    
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.error || `HTTP ${res.status}`);
+    }
+    
     input.value = '';
     await loadWatchlist();
   } catch (e) {
-    alert('Failed to add symbol to watchlist.');
+    console.error('Watchlist add error:', e);
+    alert(`⚠ Failed to add ${symbol}: ${e.message}`);
   }
 }
 
@@ -1162,10 +1171,16 @@ async function removeWatchlistSymbol(symbol) {
     const res = await fetch(`${base}/api/watchlist/${encodeURIComponent(symbol)}`, {
       method: 'DELETE'
     });
-    if (!res.ok) throw new Error('remove failed');
+    
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.error || `HTTP ${res.status}`);
+    }
+    
     await loadWatchlist();
   } catch (e) {
-    alert('Failed to remove symbol from watchlist.');
+    console.error('Watchlist remove error:', e);
+    alert(`⚠ Failed to remove ${symbol}: ${e.message}`);
   }
 }
 
