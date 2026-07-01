@@ -206,7 +206,7 @@ async function loadLatestAnalysis() {
 
         if (res.status === 503) {
             const j = await res.json().catch(() => ({}));
-            body.innerHTML = `<div class="claude-error"><strong>⚠ AI Not Configured</strong>${_esc(j.error || 'ANTHROPIC_API_KEY is not set on the server. Add it in Railway → Variables.')}</div>`;
+            body.innerHTML = `<div class="claude-error"><strong>⚠ AI Not Configured</strong>${_esc(j.error || 'ANTHROPIC_API_KEY is not set on the server.')}</div>`;
             return;
         }
         if (res.status === 429) {
