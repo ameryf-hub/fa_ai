@@ -33,5 +33,10 @@
   "bugs": {
     "url": "https://github.com/ameryf-hub/fa_ai/issues"
   },
-  "homepage": "https://github.com/ameryf-hub/fa_ai#readme"
+  "homepage": "https://github.com/ameryf-hub/fa_ai#readme",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.6.0",
+    "typescript-eslint": "^8.62.1"
+  }
 }
