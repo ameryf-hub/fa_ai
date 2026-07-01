@@ -2567,7 +2567,9 @@ function openClaudeAnalysis() {
     const filtered = currentFilteredData();
     const criteria = currentCriteriaSnapshot();
     sessionStorage.setItem('claudeFilterData', JSON.stringify({ filtered, criteria }));
-  } catch (_) { /* ignore */ }
+  } catch (e) {
+    console.warn('⚠ Could not save filter data to sessionStorage:', e.message);
+  }
   window.location.href = 'claude.html';
 }
 
