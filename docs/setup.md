@@ -82,6 +82,77 @@ Navigate to `http://localhost:3000`
 
 ---
 
+## Housing Search Feature
+
+### Overview
+The **Housing Search** page is accessible via the top-left menu (🏠 Housing Search). It provides a
+mobile-friendly AI chat interface powered by Google Gemini that helps users search for homes,
+understand markets, estimate costs, and navigate the buying/renting process.
+
+### Required Environment Variable
+| Variable | Description |
+|---|---|
+| `GEMINI_API_KEY` | Google Gemini API key. Get one at [aistudio.google.com](https://aistudio.google.com/app/apikey) |
+
+**Optional:**
+
+| Variable | Default | Description |
+|---|---|---|
+| `GEMINI_MODEL` | `gemini-1.5-flash` | Gemini model name to use |
+
+#### Adding to Railway
+Go to your project → Variables → Add Variable:
+- Name: `GEMINI_API_KEY`
+- Value: your key from Google AI Studio
+
+#### Adding to GitHub Secrets (for CI workflows)
+Go to your repository → Settings → Secrets and variables → Actions → New repository secret:
+- Name: `GEMINI_API_KEY`
+
+---
+
+## Red Bricks MCP Integration
+
+The app includes a ready-to-use adapter (`redbricks-mcp.js`) for connecting to a
+[Red Bricks MCP server](https://modelcontextprotocol.io/). When configured, the
+Housing Agent will automatically fetch live property listing data and inject it into
+the Gemini conversation context.
+
+### Configuration
+
+Set these environment variables (in Railway → Variables or your `.env`):
+
+| Variable | Required | Description |
+|---|---|---|
+| `REDBRICKS_MCP_URL` | Yes (to enable) | Base URL of the Red Bricks MCP HTTP endpoint, e.g. `https://mcp.redbricks.example.com` |
+| `REDBRICKS_MCP_TOKEN` | No | ****** for authentication |
+| `REDBRICKS_MCP_TRANSPORT` | No (default: `http`) | Transport mode: `http` |
+
+### Assumed MCP Tool Contract
+
+The adapter calls these MCP tools. The Red Bricks server must expose them with these names and parameter shapes:
+
+| Tool | Input | Output |
+|---|---|---|
+| `search_listings` | `{ query: string, maxResults?: number }` | `{ listings: [...] }` |
+| `neighborhood_stats` | `{ location: string }` | `{ ... }` |
+
+If the Red Bricks server uses different tool names or schemas, update the
+`callMcpTool(...)` wrappers in `redbricks-mcp.js`.
+
+### Status Endpoint
+
+Visit `/api/housing-chat/status` to verify configuration:
+```json
+{
+  "geminiConfigured": true,
+  "mcpConfigured": false,
+  "mcpTransport": "http"
+}
+```
+
+---
+
 ## Troubleshooting
 
 ### Issue: "FMP_API_KEY environment variable is not set"
