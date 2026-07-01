@@ -104,8 +104,15 @@
 <script>
 // ── CLAUDE ANALYSIS PAGE ─────────────────────────────────────────────────────
 
-/** Backend URL — same origin as this page. */
+/** Backend URL — carried over from the screener when available, otherwise same origin. */
 function getBackendURL() {
+    try {
+        const raw = sessionStorage.getItem('claudeFilterData');
+        if (raw) {
+            const j = JSON.parse(raw);
+            if (j && typeof j.backendURL === 'string' && j.backendURL.trim()) return j.backendURL.trim();
+        }
+    } catch (_) { /* ignore */ }
     return window.location.origin;
 }
 
