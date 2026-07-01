@@ -5,6 +5,8 @@ const path = require('path');
 const axios = require('axios');
 const db = require('./db');
 const ai = require('./ai-analyzer');
+const housingChat = require('./housing-chat');
+const redbricksMcp = require('./redbricks-mcp');
 
 // ════════════════════════════════════════════════════════════════════════════════
 // ── CONFIGURATION & CONSTANTS
@@ -1127,6 +1129,69 @@ app.post('/api/ai/ask', aiRateLimiter, async (req, res) => {
     }
 });
 
+// ════════════════════════════════════════════════════════════════════════════════
+// ── HOUSING SEARCH ROUTES
+// ════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/housing-chat
+ * Multi-turn housing search chat powered by Gemini.
+ * Optionally enriches context with Red Bricks MCP listing data.
+ *
+ * Body:    { messages: [{role:'user'|'assistant', content:'...'}] }
+ * Returns: { reply, mcpUsed, timestamp }
+ */
+app.post('/api/housing-chat', aiRateLimiter, async (req, res) => {
+    if (!housingChat.isConfigured()) {
+        console.warn('⚠ /api/housing-chat called but GEMINI_API_KEY is not set');
+        return res.status(503).json({
+            error: 'Housing chat is not configured. Set GEMINI_API_KEY in Railway Variables.'
+        });
+    }
+
+    const { messages } = req.body || {};
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+        return res.status(400).json({ error: '`messages` must be a non-empty array.' });
+    }
+
+    for (const m of messages) {
+        if (!m || typeof m.content !== 'string' || m.content.trim() === '') {
+            return res.status(400).json({ error: 'Each message must have a non-empty `content` string.' });
+        }
+        if (m.role !== 'user' && m.role !== 'assistant') {
+            return res.status(400).json({ error: 'Message `role` must be "user" or "assistant".' });
+        }
+    }
+
+    try {
+        const { reply, mcpUsed } = await housingChat.chat(messages, null);
+        res.json({ reply, mcpUsed, timestamp: new Date().toISOString() });
+    } catch (err) {
+        console.error('Housing chat error:', err.message);
+        if (err.code === 'MISSING_API_KEY') {
+            return res.status(503).json({ error: err.message });
+        }
+        res.status(500).json({
+            error: 'Housing chat failed',
+            message: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
+        });
+    }
+});
+
+/**
+ * GET /api/housing-chat/status
+ * Returns capability flags for the Housing Search feature.
+ * Lightweight — no authentication required.
+ */
+app.get('/api/housing-chat/status', (req, res) => {
+    res.json({
+        geminiConfigured:   housingChat.isConfigured(),
+        mcpConfigured:      redbricksMcp.isConfigured(),
+        mcpTransport:       process.env.REDBRICKS_MCP_TRANSPORT || 'http',
+    });
+});
+
 /**
  * 404 handler — must come before the error handler so unknown routes fall through here.
  */
@@ -1163,6 +1228,8 @@ if (require.main === module) {
             console.log(`   FMP API Key: ${FMP_KEY ? '✓ Set' : '✗ Not set'}`);
             console.log(`   Database: ${dbOk ? '✓ PostgreSQL' : 'JSON fallback'}`);
             console.log(`   AI (Claude): ${ai.isConfigured() ? '✓ Configured' : '✗ ANTHROPIC_API_KEY not set'}`);
+            console.log(`   AI (Gemini): ${housingChat.isConfigured() ? '✓ Configured' : '✗ GEMINI_API_KEY not set'}`);
+            console.log(`   Red Bricks MCP: ${redbricksMcp.isConfigured() ? '✓ Configured' : '✗ REDBRICKS_MCP_URL not set'}`);
             console.log(`   Rate Limiting: ✓ Enabled (30 req/min general, 10 req/min AI)\n`);
         });
     });
