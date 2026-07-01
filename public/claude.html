@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Analysis — AI-Powered Insights</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080b10; --panel: #0d1117; --border: #1c2333; --border2: #242f45;
+    --accent: #00e5ff; --accent2: #ff6b35; --green: #00ff88; --red: #ff3860;
+    --yellow: #ffd600; --muted: #4a5568; --text: #c9d1d9; --text2: #8b949e;
+    --glow: 0 0 20px rgba(0,229,255,0.15);
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'IBM Plex Mono',monospace; min-height:100vh; overflow-x:hidden; }
+  body::before { content:''; position:fixed; top:0;left:0;right:0;bottom:0; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,0.01) 2px,rgba(0,229,255,0.01) 4px); pointer-events:none; z-index:0; }
+  .wrapper { position:relative; z-index:1; max-width:1000px; margin:0 auto; padding:0 20px 60px; }
+
+  /* ── HEADER ── */
+  .page-header { border-bottom:1px solid var(--border2); padding:20px 0 16px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+  .header-left { display:flex; align-items:center; gap:16px; }
+  .back-btn { display:flex; align-items:center; gap:6px; padding:7px 14px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; cursor:pointer; border:1px solid var(--border2); background:var(--panel); color:var(--text2); text-decoration:none; transition:all 0.15s; }
+  .back-btn:hover { border-color:var(--accent); color:var(--accent); box-shadow:var(--glow); }
+  .page-title { font-family:'Bebas Neue',sans-serif; font-size:clamp(20px,4vw,36px); letter-spacing:0.08em; color:var(--accent2); text-shadow:0 0 24px rgba(255,107,53,0.3); line-height:1; }
+  .page-subtitle { font-size:9px; letter-spacing:0.25em; color:var(--muted); text-transform:uppercase; margin-top:3px; }
+  .powered-badge { font-size:8px; letter-spacing:0.2em; color:var(--muted); border:1px solid rgba(255,107,53,0.25); padding:2px 7px; text-transform:uppercase; align-self:flex-start; margin-top:4px; }
+
+  /* ── CLAUDE UI ── */
+  .claude-card { background:var(--panel); border:1px solid var(--border2); border-top:3px solid var(--accent2); margin-top:28px; display:flex; flex-direction:column; min-height:60vh; box-shadow:0 0 50px rgba(255,107,53,0.1); }
+  .claude-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 22px 0; flex-wrap:wrap; }
+  .claude-title { font-size:10px; letter-spacing:0.25em; color:var(--accent2); text-transform:uppercase; }
+  .claude-tabs { display:flex; gap:0; border-bottom:1px solid var(--border2); padding:0 22px; margin-top:14px; }
+  .claude-tab { padding:9px 18px; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.2em; text-transform:uppercase; cursor:pointer; border:none; background:transparent; color:var(--text2); border-bottom:2px solid transparent; transition:all 0.15s; margin-bottom:-1px; }
+  .claude-tab:hover { color:var(--accent2); }
+  .claude-tab.active { color:var(--accent2); border-bottom-color:var(--accent2); }
+  .claude-body { flex:1; overflow-y:auto; padding:22px; min-height:300px; }
+  .claude-section-title { font-size:9px; letter-spacing:0.3em; color:var(--accent2); text-transform:uppercase; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+  .claude-section-title::after { content:''; flex:1; height:1px; background:var(--border2); }
+  .claude-summary { font-size:12px; color:var(--text); font-family:'IBM Plex Sans',sans-serif; line-height:1.7; padding:14px; border:1px solid var(--border2); background:rgba(255,107,53,0.03); margin-bottom:20px; }
+  .claude-list { list-style:none; display:flex; flex-direction:column; gap:8px; margin-bottom:20px; }
+  .claude-list li { font-size:11px; color:var(--text2); font-family:'IBM Plex Sans',sans-serif; line-height:1.5; padding:8px 12px; border:1px solid var(--border); padding-left:24px; position:relative; }
+  .claude-list li::before { content:'›'; position:absolute; left:10px; color:var(--accent2); font-size:13px; line-height:1.4; }
+  .claude-loading { display:flex; align-items:center; gap:12px; padding:32px; color:var(--text2); font-size:11px; justify-content:center; }
+  .claude-error { padding:18px; border:1px solid rgba(255,56,96,0.35); background:rgba(255,56,96,0.04); color:var(--red); font-size:11px; font-family:'IBM Plex Sans',sans-serif; line-height:1.6; }
+  .claude-error strong { font-family:'IBM Plex Mono',monospace; font-size:10px; display:block; margin-bottom:6px; letter-spacing:0.1em; }
+  .confidence-badge { display:inline-flex; align-items:center; gap:5px; padding:2px 8px; font-size:8px; letter-spacing:0.2em; text-transform:uppercase; font-weight:600; border:1px solid; border-radius:2px; margin-left:8px; vertical-align:middle; }
+  .conf-high { border-color:var(--green); color:var(--green); background:rgba(0,255,136,0.07); }
+  .conf-medium { border-color:var(--yellow); color:var(--yellow); background:rgba(255,214,0,0.06); }
+  .conf-low { border-color:var(--muted); color:var(--muted); background:transparent; }
+  .claude-prediction { padding:12px 14px; border:1px solid var(--border); margin-bottom:8px; }
+  .claude-prediction .pred-text { font-size:11px; color:var(--text); font-family:'IBM Plex Sans',sans-serif; line-height:1.5; margin-bottom:6px; }
+  .claude-prediction .pred-rationale { font-size:10px; color:var(--text2); font-family:'IBM Plex Sans',sans-serif; line-height:1.5; padding-top:6px; border-top:1px solid var(--border); }
+  .claude-ask-form { display:flex; flex-direction:column; gap:14px; }
+  .claude-ask-row { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; }
+  .claude-ask-textarea { background:var(--bg); border:1px solid var(--border2); color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:11px; padding:10px 12px; outline:none; width:100%; resize:vertical; min-height:72px; line-height:1.5; transition:border-color 0.15s; }
+  .claude-ask-textarea:focus { border-color:var(--accent2); }
+  .claude-ask-select { background:var(--panel); border:1px solid var(--border2); color:var(--text); font-family:'IBM Plex Mono',monospace; font-size:10px; padding:8px 10px; outline:none; cursor:pointer; flex-shrink:0; }
+  .claude-ask-select:focus, .claude-ask-select:hover { border-color:var(--accent2); }
+  .btn-claude { padding:9px 18px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.15em; text-transform:uppercase; cursor:pointer; border:1px solid var(--accent2); background:transparent; color:var(--accent2); transition:all 0.2s; white-space:nowrap; }
+  .btn-claude:hover { background:rgba(255,107,53,0.1); box-shadow:0 0 16px rgba(255,107,53,0.2); }
+  .btn-claude:disabled { opacity:0.4; cursor:not-allowed; }
+  .claude-answer-block { margin-top:20px; }
+  .claude-answer-text { font-size:12px; color:var(--text); font-family:'IBM Plex Sans',sans-serif; line-height:1.7; padding:14px; border:1px solid var(--border2); background:rgba(255,107,53,0.03); margin-bottom:16px; }
+  .claude-reasoning { font-size:10px; color:var(--text2); font-family:'IBM Plex Sans',sans-serif; line-height:1.6; padding:10px 12px; border:1px solid var(--border); border-left:2px solid var(--accent2); margin-bottom:12px; }
+  .claude-sources { display:flex; flex-wrap:wrap; gap:6px; }
+  .claude-source-tag { font-size:9px; letter-spacing:0.1em; color:var(--accent2); border:1px solid rgba(255,107,53,0.35); padding:2px 8px; }
+  .claude-meta { font-size:9px; color:var(--muted); letter-spacing:0.1em; padding:10px 22px; border-top:1px solid var(--border); text-align:right; }
+
+  .spin { display:inline-block; animation:spin 0.9s linear infinite; }
+  @keyframes spin { from{transform:rotate(0deg)}to{transform:rotate(360deg)} }
+</style>
+</head>
+<body>
+<div class="wrapper">
+  <header class="page-header">
+    <div class="header-left">
+      <a class="back-btn" href="/" title="Back to Screener">← Back to Screener</a>
+      <div>
+        <div class="page-title">Claude Analysis</div>
+        <div class="page-subtitle">AI-Powered Insights</div>
+      </div>
+    </div>
+    <div class="powered-badge">Powered by Anthropic Claude</div>
+  </header>
+
+  <div class="claude-card">
+    <div class="claude-header">
+      <div class="claude-title">▸ Claude Analysis — AI-Powered Insights</div>
+    </div>
+    <div class="claude-tabs">
+      <button class="claude-tab active" id="claude-tab-analyze" onclick="switchClaudeTab('analyze')">🤖 Latest Analysis</button>
+      <button class="claude-tab" id="claude-tab-trends" onclick="switchClaudeTab('trends')">📊 Trend Predictions</button>
+      <button class="claude-tab" id="claude-tab-ask" onclick="switchClaudeTab('ask')">💬 Ask Claude</button>
+    </div>
+    <div class="claude-body" id="claude-body">
+      <div class="claude-loading"><span class="spin">⟳</span> Loading…</div>
+    </div>
+    <div class="claude-meta" id="claude-meta"></div>
+  </div>
+</div>
+
+<script>
+// ── CLAUDE ANALYSIS PAGE ─────────────────────────────────────────────────────
+
+/** Backend URL — same origin as this page. */
+function getBackendURL() {
+    return window.location.origin;
+}
+
+// Active tab and per-tab cache to avoid redundant fetches
+let _claudeActiveTab = 'analyze';
+const _claudeCache = { analyze: null, trends: null };  // ask is never cached
+
+/** Switch between the three tabs without re-fetching if data is cached. */
+function switchClaudeTab(tab) {
+    _claudeActiveTab = tab;
+    _setClaudeTabActive(tab);
+    _renderClaudeTab(tab);
+}
+
+function _setClaudeTabActive(tab) {
+    ['analyze', 'trends', 'ask'].forEach(t => {
+        const el = document.getElementById(`claude-tab-${t}`);
+        if (el) el.classList.toggle('active', t === tab);
+    });
+}
+
+function _renderClaudeTab(tab) {
+    if (tab === 'analyze') {
+        if (_claudeCache.analyze) {
+            _renderAnalysis(_claudeCache.analyze);
+        } else {
+            loadLatestAnalysis();
+        }
+    } else if (tab === 'trends') {
+        if (_claudeCache.trends) {
+            _renderTrends(_claudeCache.trends);
+        } else {
+            loadTrendPredictions();
+        }
+    } else {
+        _renderAskForm();
+    }
+}
+
+// ── Latest Analysis ──────────────────────────────────────────────────────────
+
+/**
+ * Fetch /api/ai/analyze using filter data passed via sessionStorage.
+ * Falls back to a helpful message if no filter data is available.
+ */
+async function loadLatestAnalysis() {
+    const body = document.getElementById('claude-body');
+    const meta = document.getElementById('claude-meta');
+    body.innerHTML = '<div class="claude-loading"><span class="spin">⟳</span> Asking Claude to analyse current results…</div>';
+    meta.textContent = '';
+
+    // Read filter data that was saved to sessionStorage before navigating here
+    let filterPayload = null;
+    try {
+        const raw = sessionStorage.getItem('claudeFilterData');
+        if (raw) filterPayload = JSON.parse(raw);
+    } catch (_) { /* ignore parse errors */ }
+
+    if (!filterPayload || !filterPayload.filtered || !filterPayload.filtered.length) {
+        body.innerHTML = `<div class="claude-error" style="border-color:rgba(0,229,255,0.3);background:rgba(0,229,255,0.03);color:var(--text2)">
+            <strong style="color:var(--accent)">ℹ No Filter Data</strong>
+            No screener results are available for analysis. Go back to the screener, run a filter, then open Claude Analysis from the menu.
+            <div style="margin-top:12px"><a href="/" style="color:var(--accent);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;">← Back to Screener</a></div>
+        </div>`;
+        return;
+    }
+
+    try {
+        const res = await fetch(`${getBackendURL()}/api/ai/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ results: filterPayload.filtered, criteria: filterPayload.criteria })
+        });
+
+        if (res.status === 503) {
+            const j = await res.json().catch(() => ({}));
+            body.innerHTML = `<div class="claude-error"><strong>⚠ AI Not Configured</strong>${j.error || 'ANTHROPIC_API_KEY is not set on the server. Add it in Railway → Variables.'}</div>`;
+            return;
+        }
+        if (res.status === 429) {
+            body.innerHTML = '<div class="claude-error"><strong>⚠ Rate Limited</strong>Too many AI requests. Please wait a moment and try again.</div>';
+            return;
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const data = await res.json();
+        _claudeCache.analyze = data;
+        _renderAnalysis(data);
+    } catch (err) {
+        body.innerHTML = `<div class="claude-error"><strong>⚠ Error</strong>${err.message}</div>`;
+    }
+}
+
+function _renderAnalysis(data) {
+    const body = document.getElementById('claude-body');
+    const meta = document.getElementById('claude-meta');
+
+    const patternsHtml = (data.patterns || []).length
+        ? `<div class="claude-section-title">Patterns Detected</div>
+           <ul class="claude-list">${data.patterns.map(p => `<li>${_esc(p)}</li>`).join('')}</ul>`
+        : '';
+
+    const insightsHtml = (data.insights || []).length
+        ? `<div class="claude-section-title">Actionable Insights</div>
+           <ul class="claude-list">${data.insights.map(i => `<li>${_esc(i)}</li>`).join('')}</ul>`
+        : '';
+
+    body.innerHTML = `
+        <div class="claude-section-title">Executive Summary</div>
+        <div class="claude-summary">${_esc(data.summary || '—')}</div>
+        ${patternsHtml}
+        ${insightsHtml}
+        <div style="margin-top:16px">
+          <button class="btn-claude" onclick="_claudeCache.analyze=null;loadLatestAnalysis()">⟳ Refresh Analysis</button>
+        </div>`;
+
+    meta.textContent = data.cached
+        ? `Cached · ${_fmtTs(data.timestamp)}`
+        : `Generated ${_fmtTs(data.timestamp)}`;
+}
+
+// ── Trend Predictions ────────────────────────────────────────────────────────
+
+/** Fetch /api/ai/trends?limit=20 from the filter-run history. */
+async function loadTrendPredictions() {
+    const body = document.getElementById('claude-body');
+    const meta = document.getElementById('claude-meta');
+    body.innerHTML = '<div class="claude-loading"><span class="spin">⟳</span> Analysing historical filter runs…</div>';
+    meta.textContent = '';
+
+    try {
+        const res = await fetch(`${getBackendURL()}/api/ai/trends?limit=20`);
+
+        if (res.status === 503) {
+            const j = await res.json().catch(() => ({}));
+            body.innerHTML = `<div class="claude-error"><strong>⚠ Unavailable</strong>${j.error || 'AI or database not configured on the server.'}</div>`;
+            return;
+        }
+        if (res.status === 429) {
+            body.innerHTML = '<div class="claude-error"><strong>⚠ Rate Limited</strong>Too many AI requests. Please wait a moment and try again.</div>';
+            return;
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const data = await res.json();
+
+        if (data.message && !data.trends?.length && !data.predictions?.length) {
+            body.innerHTML = `<div class="claude-error" style="border-color:rgba(0,229,255,0.3);background:rgba(0,229,255,0.03);color:var(--text2)"><strong style="color:var(--accent)">ℹ No History Yet</strong>${_esc(data.message)}</div>`;
+            meta.textContent = '';
+            return;
+        }
+
+        _claudeCache.trends = data;
+        _renderTrends(data);
+    } catch (err) {
+        body.innerHTML = `<div class="claude-error"><strong>⚠ Error</strong>${err.message}</div>`;
+    }
+}
+
+function _renderTrends(data) {
+    const body = document.getElementById('claude-body');
+    const meta = document.getElementById('claude-meta');
+
+    const confClass = { high: 'conf-high', medium: 'conf-medium', low: 'conf-low' };
+    const overallBadge = data.confidence
+        ? `<span class="confidence-badge ${confClass[data.confidence] || 'conf-low'}">${data.confidence} confidence</span>`
+        : '';
+
+    const trendsHtml = (data.trends || []).length
+        ? `<div class="claude-section-title">Identified Trends</div>
+           <ul class="claude-list">${data.trends.map(t => `<li>${_esc(t)}</li>`).join('')}</ul>`
+        : '';
+
+    const predsHtml = (data.predictions || []).length
+        ? `<div class="claude-section-title">Forward Predictions ${overallBadge}</div>
+           ${data.predictions.map(p => `
+             <div class="claude-prediction">
+               <div class="pred-text">
+                 ${_esc(p.prediction)}
+                 <span class="confidence-badge ${confClass[p.confidence] || 'conf-low'}">${p.confidence || 'low'}</span>
+               </div>
+               ${p.rationale ? `<div class="pred-rationale">↳ ${_esc(p.rationale)}</div>` : ''}
+             </div>`).join('')}`
+        : '';
+
+    const runsNote = data.runsAnalyzed != null
+        ? `<div style="font-size:9px;color:var(--muted);margin-bottom:16px;letter-spacing:0.1em">${data.runsAnalyzed} filter run(s) analysed</div>`
+        : '';
+
+    body.innerHTML = `
+        ${runsNote}
+        ${trendsHtml}
+        ${predsHtml}
+        <div style="margin-top:16px">
+          <button class="btn-claude" onclick="_claudeCache.trends=null;loadTrendPredictions()">⟳ Refresh Predictions</button>
+        </div>`;
+
+    meta.textContent = data.cached
+        ? `Cached · ${_fmtTs(data.timestamp)}`
+        : `Generated ${_fmtTs(data.timestamp)}`;
+}
+
+// ── Ask Claude ───────────────────────────────────────────────────────────────
+
+/** Render the Q&A input form (no fetch needed). */
+function _renderAskForm(prefill) {
+    const body = document.getElementById('claude-body');
+    document.getElementById('claude-meta').textContent = '';
+
+    body.innerHTML = `
+        <div class="claude-section-title">Ask a Question</div>
+        <div class="claude-ask-form">
+          <div>
+            <div style="font-size:9px;letter-spacing:0.2em;color:var(--text2);text-transform:uppercase;margin-bottom:6px">Your Question</div>
+            <textarea class="claude-ask-textarea" id="claude-question" placeholder="e.g. Which sectors have the highest average breakout score? What does the volume pattern suggest about market sentiment?">${prefill ? _esc(prefill) : ''}</textarea>
+          </div>
+          <div class="claude-ask-row">
+            <div>
+              <div style="font-size:9px;letter-spacing:0.2em;color:var(--text2);text-transform:uppercase;margin-bottom:6px">Data Context</div>
+              <select class="claude-ask-select" id="claude-context">
+                <option value="filter_results">Filter Results</option>
+                <option value="fundamentals">Fundamentals</option>
+                <option value="history">Filter History</option>
+              </select>
+            </div>
+            <button class="btn-claude" id="claude-ask-btn" onclick="submitClaudeQuestion()">▶ Ask Claude</button>
+          </div>
+        </div>
+        <div id="claude-answer-area"></div>`;
+}
+
+/** POST /api/ai/ask with the user's question and selected context. */
+async function submitClaudeQuestion() {
+    const questionEl = document.getElementById('claude-question');
+    const contextEl  = document.getElementById('claude-context');
+    const answerArea = document.getElementById('claude-answer-area');
+    const askBtn     = document.getElementById('claude-ask-btn');
+    const meta       = document.getElementById('claude-meta');
+
+    const question = (questionEl?.value || '').trim();
+    if (!question) {
+        questionEl?.focus();
+        return;
+    }
+
+    askBtn.disabled = true;
+    askBtn.innerHTML = '<span class="spin">⟳</span> Thinking…';
+    answerArea.innerHTML = '<div class="claude-loading"><span class="spin">⟳</span> Claude is thinking…</div>';
+    meta.textContent = '';
+
+    try {
+        const res = await fetch(`${getBackendURL()}/api/ai/ask`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question, context: contextEl?.value || 'filter_results' })
+        });
+
+        if (res.status === 503) {
+            const j = await res.json().catch(() => ({}));
+            answerArea.innerHTML = `<div class="claude-error" style="margin-top:16px"><strong>⚠ AI Not Configured</strong>${j.error || 'ANTHROPIC_API_KEY is not set on the server.'}</div>`;
+            return;
+        }
+        if (res.status === 429) {
+            answerArea.innerHTML = '<div class="claude-error" style="margin-top:16px"><strong>⚠ Rate Limited</strong>Too many AI requests. Please wait a moment and try again.</div>';
+            return;
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const data = await res.json();
+        _renderAnswer(data, answerArea);
+        meta.textContent = data.cached
+            ? `Cached · ${_fmtTs(data.timestamp)}`
+            : `Generated ${_fmtTs(data.timestamp)}`;
+    } catch (err) {
+        answerArea.innerHTML = `<div class="claude-error" style="margin-top:16px"><strong>⚠ Error</strong>${err.message}</div>`;
+    } finally {
+        askBtn.disabled = false;
+        askBtn.innerHTML = '▶ Ask Claude';
+    }
+}
+
+function _renderAnswer(data, container) {
+    const sourcesHtml = (data.sources || []).length
+        ? `<div class="claude-section-title" style="margin-top:14px">Sources</div>
+           <div class="claude-sources">${data.sources.map(s => `<span class="claude-source-tag">${_esc(s)}</span>`).join('')}</div>`
+        : '';
+
+    const reasoningHtml = data.reasoning
+        ? `<div class="claude-section-title" style="margin-top:14px">Reasoning</div>
+           <div class="claude-reasoning">${_esc(data.reasoning)}</div>`
+        : '';
+
+    container.innerHTML = `
+        <div class="claude-answer-block">
+          <div class="claude-section-title" style="margin-top:4px">Answer</div>
+          <div class="claude-answer-text">${_esc(data.answer || '—')}</div>
+          ${reasoningHtml}
+          ${sourcesHtml}
+        </div>`;
+}
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+/** Escape HTML special characters to prevent XSS. */
+function _esc(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+/** Format an ISO timestamp to a short local time string. */
+function _fmtTs(iso) {
+    if (!iso) return '';
+    try { return new Date(iso).toLocaleTimeString(); } catch { return iso; }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+
+// On page load, open the tab requested via URL hash or default to 'analyze'
+window.addEventListener('load', () => {
+    const hash = window.location.hash.replace('#', '');
+    const tab = ['analyze', 'trends', 'ask'].includes(hash) ? hash : 'analyze';
+    switchClaudeTab(tab);
+});
+</script>
+</body>
+</html>
