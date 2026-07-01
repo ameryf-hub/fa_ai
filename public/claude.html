@@ -171,7 +171,7 @@ async function loadLatestAnalysis() {
         if (raw) filterPayload = JSON.parse(raw);
     } catch (_) { /* ignore parse errors */ }
 
-    if (!filterPayload || !filterPayload.filtered || !filterPayload.filtered.length) {
+    if (!filterPayload || !Array.isArray(filterPayload.filtered) || filterPayload.filtered.length === 0) {
         body.innerHTML = `<div class="claude-error" style="border-color:rgba(0,229,255,0.3);background:rgba(0,229,255,0.03);color:var(--text2)">
             <strong style="color:var(--accent)">ℹ No Filter Data</strong>
             No screener results are available for analysis. Go back to the screener, run a filter, then open Claude Analysis from the menu.
