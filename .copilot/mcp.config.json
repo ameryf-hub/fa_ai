@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "railway": {
+      "type": "http",
+      "url": "https://mcp.railway.com",
+      "tools": ["*"]
+    }
+  }
+}

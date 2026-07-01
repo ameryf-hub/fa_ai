@@ -4,7 +4,8 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node server.js", 
+    "lint": "eslint .",
     "test": "echo \"Tests passed\" && exit 0"
   },
   "engines": {
@@ -21,7 +22,9 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "googleapis": "^173.0.0",
-    "pg": "^8.21.0"
+    "p-limit": "3.1.0",
+    "pg": "^8.21.0",
+    "socket.io": "^4.8.3"
   },
   "directories": {
     "doc": "docs"
@@ -33,5 +36,10 @@
   "bugs": {
     "url": "https://github.com/ameryf-hub/fa_ai/issues"
   },
-  "homepage": "https://github.com/ameryf-hub/fa_ai#readme"
+  "homepage": "https://github.com/ameryf-hub/fa_ai#readme",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.6.0",
+    "typescript-eslint": "^8.62.1"
+  }
 }
