@@ -1148,10 +1148,16 @@ app.get('/api/deep-dive-results', async (req, res) => {
 /**
  * Get deep-dive results from storage
  */
-app.get('/api/deep-dive', (req, res) => {
-  const data = loadDeepDiveResults();
-  if (!data) return res.status(404).json({ error: 'No results yet' });
-  res.json(data);
+app.get('/api/deep-dive', async (req, res) => {
+    try {
+        const data = await fs.readFile(DEEP_DIVE_DB, 'utf-8');
+        res.json(JSON.parse(data));
+    } catch (err) {
+        if (err.code === 'ENOENT') {
+            return res.status(404).json({ error: 'No results yet' });
+        }
+        res.status(500).json({ error: 'Failed to load deep-dive results', message: err.message });
+    }
 });
 
 // ════════════════════════════════════════════════════════════════════════════
