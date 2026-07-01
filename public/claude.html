@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Claude Analysis — AI-Powered Insights</title>
+<title>AI Assistant — AI-Powered Insights</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
@@ -16,33 +16,38 @@
   * { margin:0; padding:0; box-sizing:border-box; }
   body { background:var(--bg); color:var(--text); font-family:'IBM Plex Mono',monospace; min-height:100vh; overflow-x:hidden; }
   body::before { content:''; position:fixed; top:0;left:0;right:0;bottom:0; background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,229,255,0.01) 2px,rgba(0,229,255,0.01) 4px); pointer-events:none; z-index:0; }
-  .wrapper { position:relative; z-index:1; max-width:1000px; margin:0 auto; padding:0 20px 60px; }
+  .wrapper { position:relative; z-index:1; max-width:1000px; margin:0 auto; padding:0 20px 40px; }
 
-  /* ── HEADER ── */
-  .page-header { border-bottom:1px solid var(--border2); padding:20px 0 16px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; }
-  .header-left { display:flex; align-items:center; gap:16px; }
-  .back-btn { display:flex; align-items:center; gap:6px; padding:7px 14px; font-family:'IBM Plex Mono',monospace; font-size:10px; letter-spacing:0.14em; text-transform:uppercase; cursor:pointer; border:1px solid var(--border2); background:var(--panel); color:var(--text2); text-decoration:none; transition:all 0.15s; }
+  /* ── PAGE HEADER ── */
+  .page-header { border-bottom:1px solid var(--border2); padding:20px 0 16px; display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .back-btn { display:inline-flex; align-items:center; gap:6px; padding:7px 14px; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.18em; text-transform:uppercase; cursor:pointer; border:1px solid var(--border2); background:var(--panel); color:var(--text2); text-decoration:none; transition:all 0.2s; flex-shrink:0; }
   .back-btn:hover { border-color:var(--accent); color:var(--accent); box-shadow:var(--glow); }
-  .page-title { font-family:'Bebas Neue',sans-serif; font-size:clamp(20px,4vw,36px); letter-spacing:0.08em; color:var(--accent2); text-shadow:0 0 24px rgba(255,107,53,0.3); line-height:1; }
-  .page-subtitle { font-size:9px; letter-spacing:0.25em; color:var(--muted); text-transform:uppercase; margin-top:3px; }
-  .powered-badge { font-size:8px; letter-spacing:0.2em; color:var(--muted); border:1px solid rgba(255,107,53,0.25); padding:2px 7px; text-transform:uppercase; align-self:flex-start; margin-top:4px; }
+  .page-title { font-family:'Bebas Neue',sans-serif; font-size:clamp(22px,4vw,38px); letter-spacing:0.08em; color:var(--accent2); line-height:1; }
+  .page-subtitle { font-size:9px; letter-spacing:0.28em; color:var(--muted); text-transform:uppercase; margin-top:3px; }
+  .powered-by { font-size:8px; color:var(--muted); letter-spacing:0.1em; text-transform:uppercase; margin-left:auto; align-self:flex-end; padding-bottom:3px; }
 
-  /* ── CLAUDE UI ── */
-  .claude-card { background:var(--panel); border:1px solid var(--border2); border-top:3px solid var(--accent2); margin-top:28px; display:flex; flex-direction:column; min-height:60vh; box-shadow:0 0 50px rgba(255,107,53,0.1); }
-  .claude-header { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:18px 22px 0; flex-wrap:wrap; }
-  .claude-title { font-size:10px; letter-spacing:0.25em; color:var(--accent2); text-transform:uppercase; }
-  .claude-tabs { display:flex; gap:0; border-bottom:1px solid var(--border2); padding:0 22px; margin-top:14px; }
-  .claude-tab { padding:9px 18px; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.2em; text-transform:uppercase; cursor:pointer; border:none; background:transparent; color:var(--text2); border-bottom:2px solid transparent; transition:all 0.15s; margin-bottom:-1px; }
+  /* ── CONTEXT BANNER ── */
+  .context-banner { margin:14px 0 0; padding:10px 14px; background:rgba(255,107,53,0.05); border:1px solid rgba(255,107,53,0.2); border-left:3px solid var(--accent2); font-size:10px; color:var(--text2); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .context-banner strong { color:var(--accent2); }
+
+  /* ── TABS ── */
+  .claude-tabs { display:flex; gap:0; border-bottom:1px solid var(--border2); margin-top:22px; }
+  .claude-tab { padding:10px 20px; font-family:'IBM Plex Mono',monospace; font-size:9px; letter-spacing:0.2em; text-transform:uppercase; cursor:pointer; border:none; background:transparent; color:var(--text2); border-bottom:2px solid transparent; transition:all 0.15s; margin-bottom:-1px; }
   .claude-tab:hover { color:var(--accent2); }
   .claude-tab.active { color:var(--accent2); border-bottom-color:var(--accent2); }
-  .claude-body { flex:1; overflow-y:auto; padding:22px; min-height:300px; }
+
+  /* ── BODY ── */
+  .claude-body { min-height:300px; padding:24px 0; }
+  .claude-meta { font-size:9px; color:var(--muted); letter-spacing:0.1em; padding:10px 0; border-top:1px solid var(--border); text-align:right; margin-top:8px; }
+
+  /* ── CONTENT ELEMENTS ── */
   .claude-section-title { font-size:9px; letter-spacing:0.3em; color:var(--accent2); text-transform:uppercase; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
   .claude-section-title::after { content:''; flex:1; height:1px; background:var(--border2); }
   .claude-summary { font-size:12px; color:var(--text); font-family:'IBM Plex Sans',sans-serif; line-height:1.7; padding:14px; border:1px solid var(--border2); background:rgba(255,107,53,0.03); margin-bottom:20px; }
   .claude-list { list-style:none; display:flex; flex-direction:column; gap:8px; margin-bottom:20px; }
   .claude-list li { font-size:11px; color:var(--text2); font-family:'IBM Plex Sans',sans-serif; line-height:1.5; padding:8px 12px; border:1px solid var(--border); padding-left:24px; position:relative; }
   .claude-list li::before { content:'›'; position:absolute; left:10px; color:var(--accent2); font-size:13px; line-height:1.4; }
-  .claude-loading { display:flex; align-items:center; gap:12px; padding:32px; color:var(--text2); font-size:11px; justify-content:center; }
+  .claude-loading { display:flex; align-items:center; gap:12px; padding:40px; color:var(--text2); font-size:11px; justify-content:center; }
   .claude-error { padding:18px; border:1px solid rgba(255,56,96,0.35); background:rgba(255,56,96,0.04); color:var(--red); font-size:11px; font-family:'IBM Plex Sans',sans-serif; line-height:1.6; }
   .claude-error strong { font-family:'IBM Plex Mono',monospace; font-size:10px; display:block; margin-bottom:6px; letter-spacing:0.1em; }
   .confidence-badge { display:inline-flex; align-items:center; gap:5px; padding:2px 8px; font-size:8px; letter-spacing:0.2em; text-transform:uppercase; font-weight:600; border:1px solid; border-radius:2px; margin-left:8px; vertical-align:middle; }
@@ -66,7 +71,6 @@
   .claude-reasoning { font-size:10px; color:var(--text2); font-family:'IBM Plex Sans',sans-serif; line-height:1.6; padding:10px 12px; border:1px solid var(--border); border-left:2px solid var(--accent2); margin-bottom:12px; }
   .claude-sources { display:flex; flex-wrap:wrap; gap:6px; }
   .claude-source-tag { font-size:9px; letter-spacing:0.1em; color:var(--accent2); border:1px solid rgba(255,107,53,0.35); padding:2px 8px; }
-  .claude-meta { font-size:9px; color:var(--muted); letter-spacing:0.1em; padding:10px 22px; border-top:1px solid var(--border); text-align:right; }
 
   .spin { display:inline-block; animation:spin 0.9s linear infinite; }
   @keyframes spin { from{transform:rotate(0deg)}to{transform:rotate(360deg)} }
@@ -74,53 +78,78 @@
 </head>
 <body>
 <div class="wrapper">
-  <header class="page-header">
-    <div class="header-left">
-      <a class="back-btn" href="/" title="Back to Screener">← Back to Screener</a>
-      <div>
-        <div class="page-title">Claude Analysis</div>
-        <div class="page-subtitle">AI-Powered Insights</div>
-      </div>
-    </div>
-    <div class="powered-badge">Powered by Anthropic Claude</div>
-  </header>
 
-  <div class="claude-card">
-    <div class="claude-header">
-      <div class="claude-title">▸ Claude Analysis — AI-Powered Insights</div>
+  <div class="page-header">
+    <a class="back-btn" href="index.html">← Back to Screener</a>
+    <div>
+      <div class="page-title">AI Assistant</div>
+      <div class="page-subtitle">AI-Powered Insights</div>
     </div>
-    <div class="claude-tabs">
-      <button class="claude-tab active" id="claude-tab-analyze" onclick="switchClaudeTab('analyze')">🤖 Latest Analysis</button>
-      <button class="claude-tab" id="claude-tab-trends" onclick="switchClaudeTab('trends')">📊 Trend Predictions</button>
-      <button class="claude-tab" id="claude-tab-ask" onclick="switchClaudeTab('ask')">💬 Ask Claude</button>
-    </div>
-    <div class="claude-body" id="claude-body">
-      <div class="claude-loading"><span class="spin">⟳</span> Loading…</div>
-    </div>
-    <div class="claude-meta" id="claude-meta"></div>
+    <div class="powered-by">Powered by Anthropic Claude</div>
   </div>
+
+  <div class="context-banner" id="context-banner" style="display:none">
+    <strong id="context-count">—</strong> stocks from your last screen · <span id="context-label">No criteria active</span>
+  </div>
+
+  <div class="claude-tabs">
+    <button class="claude-tab active" id="claude-tab-analyze" onclick="switchClaudeTab('analyze')">🤖 Latest Analysis</button>
+    <button class="claude-tab" id="claude-tab-trends" onclick="switchClaudeTab('trends')">📊 Trend Predictions</button>
+    <button class="claude-tab" id="claude-tab-ask" onclick="switchClaudeTab('ask')">💬 Ask Claude</button>
+  </div>
+
+  <div class="claude-body" id="claude-body">
+    <div class="claude-loading"><span class="spin">⟳</span> Loading…</div>
+  </div>
+  <div class="claude-meta" id="claude-meta"></div>
+
 </div>
 
 <script>
-// ── CLAUDE ANALYSIS PAGE ─────────────────────────────────────────────────────
+// ════════════════════════════════════════════════════════════════════════════
+// ── CLAUDE ANALYSIS PAGE
+// ════════════════════════════════════════════════════════════════════════════
 
-/** Backend URL — carried over from the screener when available, otherwise same origin. */
 function getBackendURL() {
-    try {
-        const raw = sessionStorage.getItem('claudeFilterData');
-        if (raw) {
-            const j = JSON.parse(raw);
-            if (j && typeof j.backendURL === 'string' && j.backendURL.trim()) return j.backendURL.trim();
-        }
-    } catch (_) { /* ignore */ }
     return window.location.origin;
+}
+
+/** Read the filtered stock data passed from the main screener page. */
+function currentFilteredData() {
+    try {
+        const raw = sessionStorage.getItem('claudeFilteredData');
+        return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+}
+
+/** Read the criteria snapshot passed from the main screener page. */
+function currentCriteriaSnapshot() {
+    try {
+        const raw = sessionStorage.getItem('claudeCriteriaSnapshot');
+        return raw ? JSON.parse(raw) : {};
+    } catch { return {}; }
+}
+
+/** Escape HTML special characters to prevent XSS. */
+function _esc(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+/** Format an ISO timestamp to a short local time string. */
+function _fmtTs(iso) {
+    if (!iso) return '';
+    try { return new Date(iso).toLocaleTimeString(); } catch { return iso; }
 }
 
 // Active tab and per-tab cache to avoid redundant fetches
 let _claudeActiveTab = 'analyze';
 const _claudeCache = { analyze: null, trends: null };  // ask is never cached
 
-/** Switch between the three tabs without re-fetching if data is cached. */
 function switchClaudeTab(tab) {
     _claudeActiveTab = tab;
     _setClaudeTabActive(tab);
@@ -154,42 +183,30 @@ function _renderClaudeTab(tab) {
 
 // ── Latest Analysis ──────────────────────────────────────────────────────────
 
-/**
- * Fetch /api/ai/analyze using filter data passed via sessionStorage.
- * Falls back to a helpful message if no filter data is available.
- */
 async function loadLatestAnalysis() {
     const body = document.getElementById('claude-body');
     const meta = document.getElementById('claude-meta');
     body.innerHTML = '<div class="claude-loading"><span class="spin">⟳</span> Asking Claude to analyse current results…</div>';
     meta.textContent = '';
 
-    // Read filter data that was saved to sessionStorage before navigating here
-    let filterPayload = null;
-    try {
-        const raw = sessionStorage.getItem('claudeFilterData');
-        if (raw) filterPayload = JSON.parse(raw);
-    } catch (_) { /* ignore parse errors */ }
-
-    if (!filterPayload || !Array.isArray(filterPayload.filtered) || filterPayload.filtered.length === 0) {
-        body.innerHTML = `<div class="claude-error" style="border-color:rgba(0,229,255,0.3);background:rgba(0,229,255,0.03);color:var(--text2)">
-            <strong style="color:var(--accent)">ℹ No Filter Data</strong>
-            No screener results are available for analysis. Go back to the screener, run a filter, then open Claude Analysis from the menu.
-            <div style="margin-top:12px"><a href="/" style="color:var(--accent);font-size:10px;letter-spacing:0.12em;text-transform:uppercase;">← Back to Screener</a></div>
-        </div>`;
+    const filtered = currentFilteredData();
+    if (!filtered.length) {
+        body.innerHTML = '<div class="claude-error"><strong>⚠ No Data</strong>No screener data found. Go back to the screener, run a screen, then open AI Assistant from the menu.</div>';
         return;
     }
+
+    const criteria = currentCriteriaSnapshot();
 
     try {
         const res = await fetch(`${getBackendURL()}/api/ai/analyze`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ results: filterPayload.filtered, criteria: filterPayload.criteria })
+            body: JSON.stringify({ results: filtered, criteria })
         });
 
         if (res.status === 503) {
             const j = await res.json().catch(() => ({}));
-            body.innerHTML = `<div class="claude-error"><strong>⚠ AI Not Configured</strong>${j.error || 'ANTHROPIC_API_KEY is not set on the server. Add it in Railway → Variables.'}</div>`;
+            body.innerHTML = `<div class="claude-error"><strong>⚠ AI Not Configured</strong>${_esc(j.error || 'ANTHROPIC_API_KEY is not set on the server.')}</div>`;
             return;
         }
         if (res.status === 429) {
@@ -202,7 +219,7 @@ async function loadLatestAnalysis() {
         _claudeCache.analyze = data;
         _renderAnalysis(data);
     } catch (err) {
-        body.innerHTML = `<div class="claude-error"><strong>⚠ Error</strong>${err.message}</div>`;
+        body.innerHTML = `<div class="claude-error"><strong>⚠ Error</strong>${_esc(err.message)}</div>`;
     }
 }
 
@@ -212,12 +229,12 @@ function _renderAnalysis(data) {
 
     const patternsHtml = (data.patterns || []).length
         ? `<div class="claude-section-title">Patterns Detected</div>
-           <ul class="claude-list">${data.patterns.map(p => `<li>${_esc(p)}</li>`).join('')}</ul>`
+           <ul class="claude-list">${(data.patterns).map(p => `<li>${_esc(p)}</li>`).join('')}</ul>`
         : '';
 
     const insightsHtml = (data.insights || []).length
         ? `<div class="claude-section-title">Actionable Insights</div>
-           <ul class="claude-list">${data.insights.map(i => `<li>${_esc(i)}</li>`).join('')}</ul>`
+           <ul class="claude-list">${(data.insights).map(i => `<li>${_esc(i)}</li>`).join('')}</ul>`
         : '';
 
     body.innerHTML = `
@@ -236,7 +253,6 @@ function _renderAnalysis(data) {
 
 // ── Trend Predictions ────────────────────────────────────────────────────────
 
-/** Fetch /api/ai/trends?limit=20 from the filter-run history. */
 async function loadTrendPredictions() {
     const body = document.getElementById('claude-body');
     const meta = document.getElementById('claude-meta');
@@ -248,7 +264,7 @@ async function loadTrendPredictions() {
 
         if (res.status === 503) {
             const j = await res.json().catch(() => ({}));
-            body.innerHTML = `<div class="claude-error"><strong>⚠ Unavailable</strong>${j.error || 'AI or database not configured on the server.'}</div>`;
+            body.innerHTML = `<div class="claude-error"><strong>⚠ Unavailable</strong>${_esc(j.error || 'AI or database not configured on the server.')}</div>`;
             return;
         }
         if (res.status === 429) {
@@ -268,7 +284,7 @@ async function loadTrendPredictions() {
         _claudeCache.trends = data;
         _renderTrends(data);
     } catch (err) {
-        body.innerHTML = `<div class="claude-error"><strong>⚠ Error</strong>${err.message}</div>`;
+        body.innerHTML = `<div class="claude-error"><strong>⚠ Error</strong>${_esc(err.message)}</div>`;
     }
 }
 
@@ -283,7 +299,7 @@ function _renderTrends(data) {
 
     const trendsHtml = (data.trends || []).length
         ? `<div class="claude-section-title">Identified Trends</div>
-           <ul class="claude-list">${data.trends.map(t => `<li>${_esc(t)}</li>`).join('')}</ul>`
+           <ul class="claude-list">${(data.trends).map(t => `<li>${_esc(t)}</li>`).join('')}</ul>`
         : '';
 
     const predsHtml = (data.predictions || []).length
@@ -292,7 +308,7 @@ function _renderTrends(data) {
              <div class="claude-prediction">
                <div class="pred-text">
                  ${_esc(p.prediction)}
-                 <span class="confidence-badge ${confClass[p.confidence] || 'conf-low'}">${p.confidence || 'low'}</span>
+                 <span class="confidence-badge ${confClass[p.confidence] || 'conf-low'}">${_esc(p.confidence || 'low')}</span>
                </div>
                ${p.rationale ? `<div class="pred-rationale">↳ ${_esc(p.rationale)}</div>` : ''}
              </div>`).join('')}`
@@ -317,7 +333,6 @@ function _renderTrends(data) {
 
 // ── Ask Claude ───────────────────────────────────────────────────────────────
 
-/** Render the Q&A input form (no fetch needed). */
 function _renderAskForm(prefill) {
     const body = document.getElementById('claude-body');
     document.getElementById('claude-meta').textContent = '';
@@ -344,7 +359,6 @@ function _renderAskForm(prefill) {
         <div id="claude-answer-area"></div>`;
 }
 
-/** POST /api/ai/ask with the user's question and selected context. */
 async function submitClaudeQuestion() {
     const questionEl = document.getElementById('claude-question');
     const contextEl  = document.getElementById('claude-context');
@@ -372,7 +386,7 @@ async function submitClaudeQuestion() {
 
         if (res.status === 503) {
             const j = await res.json().catch(() => ({}));
-            answerArea.innerHTML = `<div class="claude-error" style="margin-top:16px"><strong>⚠ AI Not Configured</strong>${j.error || 'ANTHROPIC_API_KEY is not set on the server.'}</div>`;
+            answerArea.innerHTML = `<div class="claude-error" style="margin-top:16px"><strong>⚠ AI Not Configured</strong>${_esc(j.error || 'ANTHROPIC_API_KEY is not set on the server.')}</div>`;
             return;
         }
         if (res.status === 429) {
@@ -387,7 +401,7 @@ async function submitClaudeQuestion() {
             ? `Cached · ${_fmtTs(data.timestamp)}`
             : `Generated ${_fmtTs(data.timestamp)}`;
     } catch (err) {
-        answerArea.innerHTML = `<div class="claude-error" style="margin-top:16px"><strong>⚠ Error</strong>${err.message}</div>`;
+        answerArea.innerHTML = `<div class="claude-error" style="margin-top:16px"><strong>⚠ Error</strong>${_esc(err.message)}</div>`;
     } finally {
         askBtn.disabled = false;
         askBtn.innerHTML = '▶ Ask Claude';
@@ -414,32 +428,34 @@ function _renderAnswer(data, container) {
         </div>`;
 }
 
-// ── Shared helpers ────────────────────────────────────────────────────────────
+// ── Init ─────────────────────────────────────────────────────────────────────
 
-/** Escape HTML special characters to prevent XSS. */
-function _esc(str) {
-    if (str == null) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
+(function init() {
+    // Show context banner if we have data
+    const filtered = currentFilteredData();
+    const criteria = currentCriteriaSnapshot();
+    if (filtered.length) {
+        const banner = document.getElementById('context-banner');
+        const countEl = document.getElementById('context-count');
+        const labelEl = document.getElementById('context-label');
+        if (banner) banner.style.display = 'flex';
+        if (countEl) countEl.textContent = `${filtered.length} stock${filtered.length !== 1 ? 's' : ''}`;
+        if (labelEl) {
+            const parts = [];
+            if (criteria.index && criteria.index !== 'ALL') parts.push(criteria.index);
+            if (criteria.signal && criteria.signal !== 'ALL') parts.push(criteria.signal);
+            if (criteria.sector && criteria.sector !== 'ALL') parts.push(criteria.sector);
+            labelEl.textContent = parts.length ? parts.join(' · ') : 'All criteria';
+        }
+    }
 
-/** Format an ISO timestamp to a short local time string. */
-function _fmtTs(iso) {
-    if (!iso) return '';
-    try { return new Date(iso).toLocaleTimeString(); } catch { return iso; }
-}
-
-// ── Init ──────────────────────────────────────────────────────────────────────
-
-// On page load, open the tab requested via URL hash or default to 'analyze'
-window.addEventListener('load', () => {
-    const hash = window.location.hash.replace('#', '');
-    const tab = ['analyze', 'trends', 'ask'].includes(hash) ? hash : 'analyze';
-    switchClaudeTab(tab);
-});
+    // Open the tab specified in the URL query param (default: analyze)
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab') || 'analyze';
+    _claudeActiveTab = tab;
+    _setClaudeTabActive(tab);
+    _renderClaudeTab(tab);
+})();
 </script>
 </body>
 </html>
