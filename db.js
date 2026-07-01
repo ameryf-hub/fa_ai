@@ -191,6 +191,41 @@ async function getFilterRun(id) {
 }
 
 /**
+ * Fetch recent filter runs INCLUDING their full results blob, ordered newest
+ * first.  Used by the AI trend-prediction endpoint.
+ *
+ * @param {number} limit - Max rows to return (capped at 50)
+ * @returns {Promise<object[]>}
+ */
+async function getRecentFilterRuns(limit = 10) {
+    if (!ready) return [];
+    try {
+        const safeLimit = Math.min(Math.max(parseInt(limit, 10) || 10, 1), 50);
+        const r = await pool.query(
+            `SELECT id, label, criteria, result_count, results, created_at
+             FROM filter_runs
+             ORDER BY created_at DESC
+             LIMIT $1`,
+            [safeLimit]
+        );
+        return r.rows;
+    } catch (err) {
+        console.warn('⚠ getRecentFilterRuns failed:', err.message);
+        return [];
+    }
+}
+
+/**
+ * Return the most recent non-expired fundamentals snapshot payload, or null.
+ * Thin wrapper around getFreshSnapshot('fundamentals') for explicit naming.
+ *
+ * @returns {Promise<object|null>}
+ */
+async function getFundamentalsSnapshot() {
+    return getFreshSnapshot('fundamentals');
+}
+
+/**
  * Global watchlist helpers
  */
 async function listWatchlist() {
@@ -208,12 +243,13 @@ async function addToWatchlist(symbol) {
     const normalized = String(symbol || '').trim().toUpperCase();
     if (!normalized) throw new Error('symbol is required');
 
-    const { rows } = await pool.query(`
-        INSERT INTO watchlist (symbol)
-        VALUES ($1)
-        ON CONFLICT (symbol) DO NOTHING
-        RETURNING symbol, created_at
-    `, [normalized]);
+    const { rows } = await pool.query(
+        `INSERT INTO watchlist (symbol)
+         VALUES ($1)
+         ON CONFLICT (symbol) DO NOTHING
+         RETURNING symbol, created_at`,
+        [normalized]
+    );
 
     if (rows[0]) return rows[0];
 
@@ -228,7 +264,10 @@ async function removeFromWatchlist(symbol) {
     if (!ready || !pool) return false;
     const normalized = String(symbol || '').trim().toUpperCase();
     if (!normalized) return false;
-    const { rowCount } = await pool.query(`DELETE FROM watchlist WHERE symbol = $1`, [normalized]);
+    const { rowCount } = await pool.query(
+        `DELETE FROM watchlist WHERE symbol = $1`,
+        [normalized]
+    );
     return rowCount > 0;
 }
 
@@ -260,6 +299,8 @@ module.exports = {
     saveFilterRun,
     listFilterRuns,
     getFilterRun,
+    getRecentFilterRuns,
+    getFundamentalsSnapshot,
     listWatchlist,
     addToWatchlist,
     removeFromWatchlist,

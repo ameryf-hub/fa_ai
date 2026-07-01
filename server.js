@@ -300,6 +300,43 @@ class SimpleCache {
 
 const apiCache = new SimpleCache();
 
+// Dedicated cache for AI responses — 5-minute TTL to avoid duplicate Claude calls
+const AI_CACHE_TTL = 5 * 60 * 1000;
+const aiCache = new SimpleCache(AI_CACHE_TTL);
+
+// Per-IP rate limiter for AI endpoints — max 10 requests per minute
+const AI_RATE_LIMIT_MAX = 10;
+const aiRateLimitMap = new Map();
+
+/**
+ * Express middleware that enforces the AI-specific rate limit (10 req/min/IP).
+ */
+function aiRateLimiter(req, res, next) {
+    const ip = req.ip || req.connection.remoteAddress || 'unknown';
+    const now = Date.now();
+    const entry = aiRateLimitMap.get(ip) || { count: 0, start: now };
+
+    if (now - entry.start > RATE_LIMIT_WINDOW_MS) {
+        entry.count = 1;
+        entry.start = now;
+    } else {
+        entry.count += 1;
+    }
+
+    aiRateLimitMap.set(ip, entry);
+
+    res.setHeader('RateLimit-Limit', AI_RATE_LIMIT_MAX);
+    res.setHeader('RateLimit-Remaining', String(Math.max(0, AI_RATE_LIMIT_MAX - entry.count)));
+    res.setHeader('RateLimit-Reset', String(Math.ceil((entry.start + RATE_LIMIT_WINDOW_MS - now) / 1000)));
+
+    if (entry.count > AI_RATE_LIMIT_MAX) {
+        return res.status(429).json({
+            error: 'AI rate limit exceeded. Maximum 10 requests per minute per IP.'
+        });
+    }
+    next();
+}
+
 // ════════════════════════════════════════════════════════════════════════════════
 // ── EXPRESS APP SETUP
 // ════════════════════════════════════════════════════════════════════════════════
@@ -359,7 +396,7 @@ app.use((req, res, next) => {
         res.header('Access-Control-Allow-Origin', origin);
         res.header('Vary', 'Origin');
     }
-    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
 
     if (req.method === 'OPTIONS') {
@@ -1221,6 +1258,288 @@ app.delete('/api/watchlist/:symbol', async (req, res) => {
  */
 app.get('/api/universe-size', (req, res) => {
     res.json({ size: 1600 }); // Approximate; adjust based on actual data
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// ── AI ROUTES
+// ════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/ai/analyze
+ * Analyse a set of screener results with Claude.
+ *
+ * Body:    { results: [...], criteria: {...} }
+ * Returns: { summary, patterns, insights, timestamp }
+ */
+app.post('/api/ai/analyze', aiRateLimiter, async (req, res) => {
+    if (!ai.isConfigured()) {
+        console.warn('⚠ /api/ai/analyze called but ANTHROPIC_API_KEY is not set');
+        return res.status(503).json({
+            error: 'AI features are not configured. Set ANTHROPIC_API_KEY in Railway Variables.'
+        });
+    }
+
+    const { results, criteria } = req.body || {};
+
+    if (!Array.isArray(results)) {
+        return res.status(400).json({ error: '`results` must be an array of stock objects.' });
+    }
+
+    // Cache key based on a lightweight fingerprint of the input
+    const cacheKey = `analyze:${JSON.stringify(criteria)}:${results.slice(0, 5).map(r => r.ticker).join(',')}:${results.length}`;
+    const cached = aiCache.get(cacheKey);
+    if (cached) {
+        return res.json({ ...cached, cached: true });
+    }
+
+    try {
+        const analysis = await ai.analyzeFilterResults(results, criteria);
+        const response = {
+            summary:   analysis.summary   ?? '',
+            patterns:  analysis.patterns  ?? [],
+            insights:  analysis.insights  ?? [],
+            timestamp: new Date().toISOString(),
+        };
+        aiCache.set(cacheKey, response);
+        res.json(response);
+    } catch (err) {
+        console.error('AI analyze error:', err.message);
+        if (err.code === 'MISSING_API_KEY') {
+            return res.status(503).json({ error: err.message });
+        }
+        res.status(500).json({
+            error: 'AI analysis failed',
+            message: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
+        });
+    }
+});
+
+/**
+ * GET /api/ai/trends
+ * Predict trends from recent filter-run history.
+ *
+ * Query:   ?limit=10  (number of recent runs to analyse, max 50)
+ * Returns: { trends, predictions, confidence, timestamp }
+ */
+app.get('/api/ai/trends', aiRateLimiter, async (req, res) => {
+    if (!ai.isConfigured()) {
+        console.warn('⚠ /api/ai/trends called but ANTHROPIC_API_KEY is not set');
+        return res.status(503).json({
+            error: 'AI features are not configured. Set ANTHROPIC_API_KEY in Railway Variables.'
+        });
+    }
+
+    if (!db.isReady()) {
+        return res.status(503).json({
+            error: 'Database not available. Filter-run history requires PostgreSQL.'
+        });
+    }
+
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 10, 1), 50);
+
+    const cacheKey = `trends:${limit}`;
+    const cached = aiCache.get(cacheKey);
+    if (cached) {
+        return res.json({ ...cached, cached: true });
+    }
+
+    try {
+        const historicalData = await db.getRecentFilterRuns(limit);
+
+        if (historicalData.length === 0) {
+            return res.json({
+                trends:      [],
+                predictions: [],
+                confidence:  'low',
+                message:     'No filter-run history found. Run some screens first.',
+                timestamp:   new Date().toISOString(),
+            });
+        }
+
+        const result = await ai.predictTrends(historicalData);
+
+        // Derive an overall confidence level from the individual predictions
+        const confidenceLevels = (result.predictions ?? []).map(p => p.confidence);
+        const highCount   = confidenceLevels.filter(c => c === 'high').length;
+        const mediumCount = confidenceLevels.filter(c => c === 'medium').length;
+        const overallConfidence =
+            highCount   >= Math.ceil(confidenceLevels.length / 2) ? 'high'   :
+            mediumCount >= Math.ceil(confidenceLevels.length / 2) ? 'medium' : 'low';
+
+        const response = {
+            trends:      result.trends      ?? [],
+            predictions: result.predictions ?? [],
+            confidence:  overallConfidence,
+            runsAnalyzed: historicalData.length,
+            timestamp:   new Date().toISOString(),
+        };
+        aiCache.set(cacheKey, response);
+        res.json(response);
+    } catch (err) {
+        console.error('AI trends error:', err.message);
+        if (err.code === 'MISSING_API_KEY') {
+            return res.status(503).json({ error: err.message });
+        }
+        res.status(500).json({
+            error: 'AI trend prediction failed',
+            message: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
+        });
+    }
+});
+
+/**
+ * POST /api/ai/ask
+ * Answer a natural-language question about the stored data.
+ *
+ * Body:    { question: "...", context: "filter_results|fundamentals|history" }
+ * Returns: { answer, reasoning, sources, timestamp }
+ */
+app.post('/api/ai/ask', aiRateLimiter, async (req, res) => {
+    if (!ai.isConfigured()) {
+        console.warn('⚠ /api/ai/ask called but ANTHROPIC_API_KEY is not set');
+        return res.status(503).json({
+            error: 'AI features are not configured. Set ANTHROPIC_API_KEY in Railway Variables.'
+        });
+    }
+
+    const { question, context: contextType } = req.body || {};
+
+    if (!question || typeof question !== 'string' || question.trim() === '') {
+        return res.status(400).json({ error: '`question` is required and must be a non-empty string.' });
+    }
+
+    const validContextTypes = ['filter_results', 'fundamentals', 'history'];
+    const resolvedContextType = validContextTypes.includes(contextType) ? contextType : 'filter_results';
+
+    const cacheKey = `ask:${resolvedContextType}:${question.trim().toLowerCase().slice(0, 120)}`;
+    const cached = aiCache.get(cacheKey);
+    if (cached) {
+        return res.json({ ...cached, cached: true });
+    }
+
+    try {
+        // Fetch the relevant data context from the database
+        let dataContext = {};
+
+        if (resolvedContextType === 'fundamentals') {
+            const snap = await db.getFundamentalsSnapshot();
+            dataContext = snap
+                ? { type: 'fundamentals', stocks: (snap.stocks ?? []).slice(0, 40), generatedAt: snap.generatedAt }
+                : { type: 'fundamentals', message: 'No fundamentals snapshot available.' };
+
+        } else if (resolvedContextType === 'history') {
+            const runs = await db.getRecentFilterRuns(20);
+            dataContext = {
+                type: 'filter_history',
+                runs: runs.map(r => ({
+                    id:          r.id,
+                    label:       r.label,
+                    createdAt:   r.created_at,
+                    resultCount: r.result_count,
+                    criteria:    r.criteria,
+                })),
+            };
+
+        } else {
+            // filter_results — use the most recent run's full results
+            const runs = await db.getRecentFilterRuns(1);
+            if (runs.length > 0 && Array.isArray(runs[0].results)) {
+                dataContext = {
+                    type:      'filter_results',
+                    label:     runs[0].label,
+                    createdAt: runs[0].created_at,
+                    criteria:  runs[0].criteria,
+                    results:   runs[0].results.slice(0, 30),
+                };
+            } else {
+                dataContext = { type: 'filter_results', message: 'No filter results available.' };
+            }
+        }
+
+        const result = await ai.answerQuestion(question.trim(), dataContext);
+
+        const response = {
+            answer:    result.answer    ?? '',
+            reasoning: result.reasoning ?? '',
+            sources:   result.sources   ?? [],
+            context:   resolvedContextType,
+            timestamp: new Date().toISOString(),
+        };
+        aiCache.set(cacheKey, response);
+        res.json(response);
+    } catch (err) {
+        console.error('AI ask error:', err.message);
+        if (err.code === 'MISSING_API_KEY') {
+            return res.status(503).json({ error: err.message });
+        }
+        res.status(500).json({
+            error: 'AI question answering failed',
+            message: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
+        });
+    }
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// ── HOUSING SEARCH ROUTES
+// ════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * POST /api/housing-chat
+ * Multi-turn housing search chat powered by Gemini.
+ * Optionally enriches context with Red Bricks MCP listing data.
+ *
+ * Body:    { messages: [{role:'user'|'assistant', content:'...'}] }
+ * Returns: { reply, mcpUsed, timestamp }
+ */
+app.post('/api/housing-chat', aiRateLimiter, async (req, res) => {
+    if (!housingChat.isConfigured()) {
+        console.warn('⚠ /api/housing-chat called but GEMINI_API_KEY is not set');
+        return res.status(503).json({
+            error: 'Housing chat is not configured. Set GEMINI_API_KEY in Railway Variables.'
+        });
+    }
+
+    const { messages } = req.body || {};
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+        return res.status(400).json({ error: '`messages` must be a non-empty array.' });
+    }
+
+    for (const m of messages) {
+        if (!m || typeof m.content !== 'string' || m.content.trim() === '') {
+            return res.status(400).json({ error: 'Each message must have a non-empty `content` string.' });
+        }
+        if (m.role !== 'user' && m.role !== 'assistant') {
+            return res.status(400).json({ error: 'Message `role` must be "user" or "assistant".' });
+        }
+    }
+
+    try {
+        const { reply, mcpUsed } = await housingChat.chat(messages, null);
+        res.json({ reply, mcpUsed, timestamp: new Date().toISOString() });
+    } catch (err) {
+        console.error('Housing chat error:', err.message);
+        if (err.code === 'MISSING_API_KEY') {
+            return res.status(503).json({ error: err.message });
+        }
+        res.status(500).json({
+            error: 'Housing chat failed',
+            message: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message
+        });
+    }
+});
+
+/**
+ * GET /api/housing-chat/status
+ * Returns capability flags for the Housing Search feature.
+ * Lightweight — no authentication required.
+ */
+app.get('/api/housing-chat/status', (req, res) => {
+    res.json({
+        geminiConfigured:   housingChat.isConfigured(),
+        mcpConfigured:      redbricksMcp.isConfigured(),
+        mcpTransport:       process.env.REDBRICKS_MCP_TRANSPORT || 'http',
+    });
 });
 
 /**
