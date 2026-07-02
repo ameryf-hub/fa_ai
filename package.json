@@ -4,7 +4,7 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js", 
+    "start": "node server.js",
     "lint": "eslint .",
     "test": "echo \"Tests passed\" && exit 0"
   },
@@ -16,6 +16,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.55.1",
     "@anthropic-ai/sdk": "^0.55.0",
     "@google/generative-ai": "^0.21.0",
     "axios": "^1.17.0",
