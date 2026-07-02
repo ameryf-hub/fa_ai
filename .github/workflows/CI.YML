@@ -1,0 +1,75 @@
+name: CI - Error Checks
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  check:
+    name: Lint, Build & Syntax Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # --- Syntax check every JS/TS file compiles cleanly ---
+      - name: Check JavaScript syntax
+        run: |
+          find . -name "*.js" \
+            -not -path "./node_modules/*" \
+            -not -path "./dist/*" \
+            -not -path "./build/*" \
+            -print0 | xargs -0 -n1 node --check
+
+      # --- TypeScript type-check (no-ops safely if no tsconfig.json exists) ---
+      - name: TypeScript type check
+        run: |
+          if [ -f "tsconfig.json" ]; then
+            npx tsc --noEmit
+          else
+            echo "No tsconfig.json found, skipping type check."
+          fi
+
+      # --- Lint (runs your existing `lint` script if present, skips otherwise) ---
+      - name: Run linter
+        run: |
+          if npm run | grep -q " lint"; then
+            npm run lint
+          else
+            echo "No 'lint' script found in package.json, skipping."
+          fi
+
+      # --- Build (runs your existing `build` script if present, skips otherwise) ---
+      - name: Run build
+        run: |
+          if npm run | grep -q " build"; then
+            npm run build
+          else
+            echo "No 'build' script found in package.json, skipping."
+          fi
+
+      # --- Dependency vulnerability scan ---
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      # --- Tests (runs automatically once you add a test suite; harmless until then) ---
+      - name: Run tests
+        run: |
+          if npm run | grep -q " test"; then
+            npm test
+          else
+            echo "No 'test' script found in package.json, skipping (add tests when ready)."
+          fi
